@@ -1,0 +1,9 @@
+[package]
+name = "quirkmm_simulator"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ndarray = "0.17"
+num-complex = "0.4"
+wasm-bindgen = "0.2"
