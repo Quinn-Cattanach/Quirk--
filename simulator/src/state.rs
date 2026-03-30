@@ -1,4 +1,4 @@
-use crate::gates::Gate;
+use crate::gates::SingleQbitGate;
 use crate::representation::{density::Density, vector::Vector};
 use ndarray::{Array, Dimension, IxDyn};
 use num_complex::Complex32;
@@ -8,7 +8,7 @@ pub trait State {
     fn data(&self) -> &Array<Complex32, IxDyn>;
     fn data_mut(&mut self) -> &mut Array<Complex32, IxDyn>;
 
-    fn apply_single(&mut self, gate: Gate, q: usize);
+    fn apply_single(&mut self, gate: SingleQbitGate, q: usize);
     fn apply_cnot(&mut self, control: usize, target: usize);
 }
 
@@ -25,7 +25,7 @@ impl State for Vector {
         &mut self.data
     }
 
-    fn apply_single(&mut self, gate: Gate, q: usize) {
+    fn apply_single(&mut self, gate: SingleQbitGate, q: usize) {
         let u = gate.matrix();
         let shape = vec![2; self.n_qbit()];
         let mut new = Array::zeros(IxDyn(&shape));
@@ -75,7 +75,7 @@ impl State for Density {
         &mut self.data
     }
 
-    fn apply_single(&mut self, gate: Gate, q: usize) {
+    fn apply_single(&mut self, gate: SingleQbitGate, q: usize) {
         let u = gate.matrix();
         let n = self.n_qbit();
         let shape = vec![2; 2 * n];

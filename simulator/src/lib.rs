@@ -1,7 +1,13 @@
 use std::f32::consts::SQRT_2;
 
-use num_complex::Complex32;
+use crate::circuit::Circuit;
 
+use log::Level;
+use log::{error, info};
+use num_complex::Complex32;
+use serde::Deserialize;
+use wasm_bindgen::prelude::*;
+pub mod circuit;
 pub mod gates;
 pub mod representation;
 pub mod state;
@@ -11,11 +17,46 @@ pub const ONE_COMPLEX: Complex32 = Complex32::new(1.0, 0.0);
 pub const ZERO_COMPLEX: Complex32 = Complex32::new(0.0, 0.0);
 pub const I_COMPLEX: Complex32 = Complex32::new(0.0, 0.0);
 
+#[wasm_bindgen(start)]
+pub fn main() {
+    console_log::init_with_level(log::Level::Debug).expect("error initializing logger");
+
+    info!("Logger initialized! Rust logs should now appear in console.");
+}
+
+#[wasm_bindgen]
+pub fn greet(circuit: JsValue) {
+    info!("Hello from rust!");
+
+    let circuit = serde_wasm_bindgen::from_value::<Circuit>(circuit);
+
+    if let Ok(circuit) = circuit {
+        info!(
+            "Received a {} qbit circuit with {} gates:",
+            circuit.n_qbits,
+            circuit.gates.len()
+        );
+
+        for gate in circuit.gates {
+            match gate {
+                circuit::Gate::SingleQbit(single_qbit_gate, position) => {
+                    info!("{:?} - target: {}", single_qbit_gate, position)
+                }
+                circuit::Gate::CNot(control, target) => {
+                    info!("CNOT - control: {}, target: {}", control, target)
+                }
+            }
+        }
+    } else {
+        error!("Failed to deserialize the passed circuit!");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
-        gates::Gate,
+        gates::SingleQbitGate,
         representation::{density::Density, primitives::PrimitiveState, vector::Vector},
         state::State,
     };
@@ -29,7 +70,7 @@ mod tests {
 
         println!("{}", qbit);
 
-        qbit.apply_single(Gate::H, 0);
+        qbit.apply_single(SingleQbitGate::H, 0);
 
         println!("{}", qbit);
 
@@ -47,7 +88,7 @@ mod tests {
 
         println!("{}", state);
 
-        state.apply_single(Gate::H, 0);
+        state.apply_single(SingleQbitGate::H, 0);
 
         println!("{}", state);
 

@@ -1,10 +1,23 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { useEffect, useState } from 'react';
+import './App.css';
+import reactLogo from './assets/react.svg';
+import type { Circuit } from './simulator/bindings/Circuit';
+import { greet } from './simulator/pkg/quirkmm_simulator';
+import viteLogo from '/vite.svg';
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    console.log("Hello from typescript.");
+
+    const circuit: Circuit = {
+      n_qbits: 2,
+      gates: [{ "SingleQbit": ["H", 0] }]
+    };
+
+    greet(circuit);
+  }, []);
 
   return (
     <>
