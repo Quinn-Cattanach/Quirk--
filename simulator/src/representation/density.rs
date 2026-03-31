@@ -68,4 +68,24 @@ impl Density {
         self.data = rho;
         self
     }
+
+    pub fn calculate_fidelity(&self, pure_state: &Vector) -> f32 {
+        let n = pure_state.data.ndim();
+        let mut fidelity = Complex32::new(0.0, 0.0);
+
+        // F = <psi| rho |psi> = sum_{i,j} conj(psi_i) * rho_ij * psi_j
+        for (idx, &amp_i) in pure_state.data.indexed_iter() {
+            for (jdx, &amp_j) in pure_state.data.indexed_iter() {
+                let mut rho_idx = Vec::with_capacity(2 * n);
+                rho_idx.extend(idx.as_array_view().iter());
+                rho_idx.extend(jdx.as_array_view().iter());
+
+                let rho_val = self.data[IxDyn(&rho_idx)];
+                fidelity += amp_i.conj() * rho_val * amp_j;
+            }
+        }
+
+        // Fidelity is physically constrained to be real and between 0 and 1
+        fidelity.re.clamp(0.0, 1.0)
+    }
 }

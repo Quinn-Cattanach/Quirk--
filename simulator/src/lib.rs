@@ -5,6 +5,7 @@ use num_complex::Complex32;
 pub mod gates;
 pub mod representation;
 pub mod state;
+pub mod timeline;
 
 pub const SQRT2_INV_COMPLEX: Complex32 = Complex32::new(1f32 / SQRT_2, 0.0);
 pub const ONE_COMPLEX: Complex32 = Complex32::new(1.0, 0.0);
@@ -84,5 +85,35 @@ mod tests {
             )
             .fold(true, |p, (a, b)| p && a == b)
         )
+    }
+
+    #[test]
+    fn test_calculate_fidelity() {
+        let n = 1;
+        
+        // --- Scenario 1: Perfect Fidelity (1.0) ---
+        // Ideal state is |0>, Noisy state is |0><0|
+        let ideal_zero = Vector::init(n).init_state(&[PrimitiveState::Zero]);
+        let noisy_zero = Density::init(n).init_state(&[PrimitiveState::Zero]);
+        
+        let f_perfect = noisy_zero.calculate_fidelity(&ideal_zero);
+        assert!((f_perfect - 1.0).abs() < 1e-6, "Fidelity of identical states should be 1.0, got {}", f_perfect);
+
+        // --- Scenario 2: Orthogonal States (0.0) ---
+        // Ideal is |0>, Noisy is |1><1|
+        let mut noisy_one = Density::init(n).init_state(&[PrimitiveState::Zero]);
+        noisy_one.apply_single(Gate::X, 0); // Flip |0><0| to |1><1|
+        
+        let f_orthogonal = noisy_one.calculate_fidelity(&ideal_zero);
+        assert!((f_orthogonal - 0.0).abs() < 1e-6, "Fidelity of orthogonal states should be 0.0, got {}", f_orthogonal);
+
+        // --- Scenario 3: Superposition / Mixed State (0.5) ---
+        // Ideal is |0>, Noisy is |+><+|
+        // |+> = (1/sqrt2)(|0> + |1>), so |<0|+>|^2 = 0.5
+        let mut noisy_plus = Density::init(n).init_state(&[PrimitiveState::Zero]);
+        noisy_plus.apply_single(Gate::H, 0);
+        
+        let f_mixed = noisy_plus.calculate_fidelity(&ideal_zero);
+        assert!((f_mixed - 0.5).abs() < 1e-6, "Fidelity between |0> and |+> should be 0.5, got {}", f_mixed);
     }
 }
