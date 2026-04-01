@@ -116,4 +116,97 @@ mod tests {
         let f_mixed = noisy_plus.calculate_fidelity(&ideal_zero);
         assert!((f_mixed - 0.5).abs() < 1e-6, "Fidelity between |0> and |+> should be 0.5, got {}", f_mixed);
     }
+
+    #[test]
+    fn test_fidelity_bell_state() {
+        let n = 2;
+        let initial = [PrimitiveState::Zero, PrimitiveState::Zero];
+        
+        let mut ideal_vec = Vector::init(n).init_state(&initial);
+        let mut noisy_rho = Density::init(n).init_state(&initial);
+        
+        println!("\n--- Starting Fidelity Test ({} Qubits) ---", n);
+
+        // 1. Initial State Check
+        let f_init = noisy_rho.calculate_fidelity(&ideal_vec);
+        println!("Step 0 (Initial): Fidelity = {:.4}", f_init);
+        assert!((f_init - 1.0).abs() < 1e-6);
+
+        // 2. Evolve to Bell State
+        ideal_vec.apply_single(Gate::H, 0);
+        ideal_vec.apply_cnot(0, 1);
+        
+        noisy_rho.apply_single(Gate::H, 0);
+        noisy_rho.apply_cnot(0, 1);
+        
+        let f_bell = noisy_rho.calculate_fidelity(&ideal_vec);
+        println!("Step 1 (Bell State): Fidelity = {:.4}", f_bell);
+        assert!((f_bell - 1.0).abs() < 1e-6, "Noiseless evolution should maintain 1.0 fidelity");
+
+        // 3. Comparison with Orthogonal State
+        let zero_state = Vector::init(n).init_state(&initial);
+        let f_overlap = noisy_rho.calculate_fidelity(&zero_state);
+        
+        println!("Step 2 (Overlap Check): Fidelity vs |00> = {:.4}", f_overlap);
+        assert!((f_overlap - 0.5).abs() < 1e-6, "Bell state overlap with |00> must be 0.5");
+    }
+
+    #[test]
+    fn test_fidelity_phase_gate() {
+        let n = 1;
+        let initial = [PrimitiveState::Plus]; // |+> state
+        
+        let mut ideal_vec = Vector::init(n).init_state(&initial);
+        let mut noisy_rho = Density::init(n).init_state(&initial);
+        
+        println!("\n--- Phase Gate Test (|H> -> |Z> -> |-H>) ---");
+
+        // Apply Z gate: |+> should become |->
+        ideal_vec.apply_single(Gate::Z, 0);
+        noisy_rho.apply_single(Gate::Z, 0);
+        
+        let f_z = noisy_rho.calculate_fidelity(&ideal_vec);
+        println!("Fidelity after Z gate: {:.4}", f_z);
+        assert!((f_z - 1.0).abs() < 1e-6);
+
+        // Cross-check: Fidelity of this new state vs the original |+> should be 0.0
+        let plus_vec = Vector::init(n).init_state(&[PrimitiveState::Plus]);
+        let f_ortho = noisy_rho.calculate_fidelity(&plus_vec);
+        println!("Fidelity vs original |+> (should be 0.0): {:.4}", f_ortho);
+        assert!(f_ortho < 1e-6);
+    }
+
+    #[test]
+    fn test_fidelity_entangled_flip() {
+        let n = 2;
+        let initial = [PrimitiveState::Zero, PrimitiveState::Zero];
+        
+        let mut ideal_vec = Vector::init(n).init_state(&initial);
+        let mut noisy_rho = Density::init(n).init_state(&initial);
+        
+        // Create Bell State |00> + |11>
+        ideal_vec.apply_single(Gate::H, 0);
+        ideal_vec.apply_cnot(0, 1);
+        noisy_rho.apply_single(Gate::H, 0);
+        noisy_rho.apply_cnot(0, 1);
+ 
+        let bell_reference = Vector {
+            data: ideal_vec.data.to_owned(),
+        }; // Store the ideal Bell state
+
+        println!("\n--- Entangled Bit-Flip Test ---");
+
+        // Apply X gate to qubit 1: (|00> + |11>) becomes (|01> + |10>)
+        ideal_vec.apply_single(Gate::X, 1);
+        noisy_rho.apply_single(Gate::X, 1);
+        
+        let f_flipped = noisy_rho.calculate_fidelity(&ideal_vec);
+        println!("Fidelity after X flip: {:.4}", f_flipped);
+        assert!((f_flipped - 1.0).abs() < 1e-6);
+
+        // Compare the flipped noisy state back to the original Bell reference
+        let f_vs_bell = noisy_rho.calculate_fidelity(&bell_reference);
+        println!("Fidelity vs original Bell state (should be 0.0): {:.4}", f_vs_bell);
+        assert!(f_vs_bell < 1e-6);
+    }
 }
