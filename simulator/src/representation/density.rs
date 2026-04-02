@@ -54,6 +54,7 @@ impl Density {
         );
 
         let shape = vec![2; n * 2];
+        // Warning: May overwrite existing data if we end up needing to rotate into current state
         let mut rho = Array::zeros(IxDyn(&shape));
         rho[IxDyn(&vec![0; n * 2])] = Complex32::new(1.0, 0.0);
 
