@@ -1,11 +1,13 @@
 use std::f32::consts::SQRT_2;
 
 use num_complex::Complex32;
+use ndarray::Array2;
 
 pub mod gates;
 pub mod representation;
 pub mod state;
 pub mod timeline;
+pub mod noise;
 
 pub const SQRT2_INV_COMPLEX: Complex32 = Complex32::new(1f32 / SQRT_2, 0.0);
 pub const ONE_COMPLEX: Complex32 = Complex32::new(1.0, 0.0);
@@ -19,6 +21,8 @@ mod tests {
         gates::Gate,
         representation::{density::Density, primitives::PrimitiveState, vector::Vector},
         state::State,
+        timeline::CircuitTimeline,
+        noise::NoiseModel,
     };
     use std::iter::zip;
 
@@ -208,5 +212,82 @@ mod tests {
         let f_vs_bell = noisy_rho.calculate_fidelity(&bell_reference);
         println!("Fidelity vs original Bell state (should be 0.0): {:.4}", f_vs_bell);
         assert!(f_vs_bell < 1e-6);
+    }
+
+    #[test]
+    fn test_t1_relaxation_decay() {
+        let n = 1;
+        // Hardware spec: T1 is 50.0 units, gate takes 50.0 units.
+        let noise = NoiseModel {
+            t1: 50.0,
+            t2: 100.0, // Set T2 high to isolate T1
+            p_depolarize: 0.0,
+            gate_time: 50.0, 
+        };
+
+        let ideal = Vector::init(n).init_state(&[PrimitiveState::One]);
+        let mut noisy = Density::init_with_noise(n, noise).init_state(&[PrimitiveState::One]);
+
+        println!("\n--- T1 Decay Test (|1> -> |0>) ---");
+        
+        // Step 1: Initial state is perfect
+        let f0 = noisy.calculate_fidelity(&ideal);
+        assert!((f0 - 1.0).abs() < 1e-6);
+
+        // Step 2: Apply a "Wait" (Identity) gate to let time pass
+        noisy.apply_decoherence(0); 
+        
+        let f1 = noisy.calculate_fidelity(&ideal);
+        println!("Fidelity after 1*T1 interval: {:.4}", f1);
+        
+        // After t=T1, probability of staying in |1> is e^-1 (~0.367)
+        assert!(f1 < 0.4 && f1 > 0.3);
+    }
+
+    #[test]
+    fn test_depolarization() {
+        let n = 1;
+        let noise = NoiseModel {
+            t1: 1000.0, t2: 1000.0, // Ignore decoherence
+            p_depolarize: 0.2,   // 20% error rate
+            gate_time: 0.0,
+        };
+
+        let ideal = Vector::init(n).init_state(&[PrimitiveState::Zero]);
+        let mut noisy = Density::init_with_noise(n, noise).init_state(&[PrimitiveState::Zero]);
+
+        println!("\n--- Depolarization Test ---");
+
+        noisy.apply_depolarizing_noise(0);
+        let f = noisy.calculate_fidelity(&ideal);
+        
+        println!("Fidelity after 20% depolarization: {:.4}", f);
+        
+        // For p=0.2, expected fidelity is 1 - p/1 = 0.90
+        assert!((f - 0.90).abs() < 1e-3);
+    }
+
+    #[test]
+    fn test_timeline_error_accumulation() {
+        let n = 1;
+        let noise = NoiseModel::default(); // Uses 0.001 p_depolarize
+        let instructions = vec![(Gate::X, 0)];
+
+        let timeline = CircuitTimeline::generate(
+            n, 
+            instructions, 
+            &[PrimitiveState::Zero],
+            Some(noise)
+        );
+
+        println!("\n--- Timeline Accumulation Test ---");
+        
+        let f_start = timeline.steps[0].fidelity;
+        let f_end = timeline.steps.last().unwrap().fidelity;
+
+        println!("Start Fidelity: {:.4}", f_start);
+        println!("End Fidelity after 3 gates: {:.4}", f_end);
+
+        assert!(f_end < f_start, "Fidelity must decrease as more gates are added");
     }
 }
