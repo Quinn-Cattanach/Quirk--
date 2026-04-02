@@ -10,6 +10,7 @@ pub trait State {
 
     fn apply_single(&mut self, gate: Gate, q: usize);
     fn apply_cnot(&mut self, control: usize, target: usize);
+    fn apply_cz(&mut self, control: usize, target: usize);
 }
 
 impl State for Vector {
@@ -59,6 +60,14 @@ impl State for Vector {
         }
 
         self.data = new;
+    }
+
+    fn apply_cz(&mut self, control: usize, target: usize) {
+        for (idx, amp) in self.data.indexed_iter_mut() {
+            if idx[control] == 1 && idx[target] == 1 {
+                *amp *= -1.0;
+            }
+        }
     }
 }
 
@@ -121,5 +130,17 @@ impl State for Density {
         }
 
         self.data = new;
+    }
+
+    fn apply_cz(&mut self, control: usize, target: usize) {
+        let n = self.n_qbit();
+        for (idx, amp) in self.data.indexed_iter_mut() {
+            let row_flip = idx[control] == 1 && idx[target] == 1;
+            let col_flip = idx[control + n] == 1 && idx[target + n] == 1;
+
+            if row_flip != col_flip {
+                *amp *= -1.0;
+            }
+        }
     }
 }

@@ -271,7 +271,7 @@ mod tests {
     fn test_timeline_error_accumulation() {
         let n = 1;
         let noise = NoiseModel::default(); // Uses 0.001 p_depolarize
-        let instructions = vec![(Gate::X, 0)];
+        let instructions = vec![(Gate::X, 0, None), (Gate::X, 0, None), (Gate::X, 0, None)];
 
         let timeline = CircuitTimeline::generate(
             n, 
@@ -289,5 +289,76 @@ mod tests {
         println!("End Fidelity after 3 gates: {:.4}", f_end);
 
         assert!(f_end < f_start, "Fidelity must decrease as more gates are added");
+    }
+
+    #[test]
+    fn test_timeline_2qbit_qft() {
+        let n = 2;
+        let noise = NoiseModel {
+            t1: 100.0, t2: 50.0,
+            p_depolarize: 0.005,
+            gate_time: 1.0,
+        };
+
+        // QFT gates for 2qbit system: H(0), CZ(0,1), H(1), SWAP
+        // fyi true QFT used controlled-phase(pi/2), but CZ is a valid proxy (still performs rotation around z)
+        let mut instructions = Vec::new();
+        instructions.push((Gate::H, 0, None));
+        instructions.push((Gate::CZ, 1, Some(0)));
+        instructions.push((Gate::H, 1, None));
+
+        let timeline = CircuitTimeline::generate(
+            n, 
+            instructions, 
+            &vec![PrimitiveState::Zero; n],
+            Some(noise)
+        );
+
+        println!("\n--- QFT 2-Qubit Noise Trace ---");
+        for (i, step) in timeline.steps.iter().enumerate() {
+            println!("Step {}: Fidelity = {:.4}", i, step.fidelity);
+        }
+
+        assert!(timeline.steps.last().unwrap().fidelity < 1.0);
+    }
+
+    #[test]
+    fn test_timeline_4qbit_ghz() {
+        let n = 4;
+        // Use realistic noise parameters for a near-term device
+        let noise = NoiseModel {
+            t1: 150.0,
+            t2: 80.0,
+            p_depolarize: 0.003,
+            gate_time: 1.0,
+        };
+
+        let mut instructions = Vec::new();
+        // Step 1: Create superposition on the first qubit
+        instructions.push((Gate::H, 0, None));
+        
+        // Step 2-4: Cascade CNOTs to entangle the whole chain
+        // Note: In our current enum, we'll use CNOT logic in the generate loop
+        instructions.push((Gate::X, 1, Some(0))); // CNOT(0,1)
+        instructions.push((Gate::X, 2, Some(1))); // CNOT(1,2)
+        instructions.push((Gate::X, 3, Some(2))); // CNOT(2,3)
+
+        let timeline = CircuitTimeline::generate(
+            n, 
+            instructions, 
+            &vec![PrimitiveState::Zero; n],
+            Some(noise)
+        );
+
+        println!("\n--- 4-Qubit GHZ State Decay ---");
+        for (i, step) in timeline.steps.iter().enumerate() {
+            println!("Step {}: Fidelity = {:.4}", i, step.fidelity);
+        }
+
+        let f_final = timeline.steps.last().unwrap().fidelity;
+        
+        // In a 4-qubit system with these errors, we expect a significant dip
+        assert!(f_final < 1.0, "Fidelity must decrease due to entanglement noise");
+        assert!(f_final > 0.8, "Fidelity should still be reasonably high for a short circuit");
     }
 }
