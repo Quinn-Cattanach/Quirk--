@@ -332,6 +332,7 @@ mod tests {
             p_depolarize: 0.003,
             gate_time: 1.0,
         };
+        let initial = vec![PrimitiveState::One; n];
 
         let mut instructions = Vec::new();
         // Step 1: Create superposition on the first qubit
@@ -346,7 +347,7 @@ mod tests {
         let timeline = CircuitTimeline::generate(
             n, 
             instructions, 
-            &vec![PrimitiveState::Zero; n],
+            &initial,
             Some(noise)
         );
 
@@ -360,5 +361,76 @@ mod tests {
         // In a 4-qubit system with these errors, we expect a significant dip
         assert!(f_final < 1.0, "Fidelity must decrease due to entanglement noise");
         assert!(f_final > 0.8, "Fidelity should still be reasonably high for a short circuit");
+    }
+
+    #[test]
+    fn test_timeline_6qbit_ghz() {
+        let n = 6;
+        let noise = NoiseModel {
+            t1: 150.0,
+            t2: 80.0,
+            p_depolarize: 0.003,
+            gate_time: 1.0,
+        }; 
+        let initial = vec![PrimitiveState::One; n];
+
+        let mut instructions = Vec::new();
+        // 1. Create superposition on the first qubit
+        instructions.push((Gate::H, 0, None));
+        
+        // 2-6. Cascade CNOTs to entangle the whole chain
+        // Each X gate with a 'Some' control acts as a CNOT in your timeline logic
+        for i in 0..5 {
+            instructions.push((Gate::X, i + 1, Some(i))); 
+        }
+
+        let timeline = CircuitTimeline::generate(
+            n, 
+            instructions, 
+            &initial,
+            Some(noise)
+        );
+
+        println!("\n--- 6-Qubit GHZ Entanglement Decay ---");
+        for (i, step) in timeline.steps.iter().enumerate() {
+            println!("Step {}: Fidelity = {:.4}", i, step.fidelity);
+        }
+
+        let f_final = timeline.steps.last().unwrap().fidelity;
+        // With 6 qubits, the "Global Decoherence" will be very noticeable
+        assert!(f_final < 1.0);
+    }
+
+    #[test]
+    fn test_timeline_8qbit_ghz() {
+        let n = 8;
+        let noise = NoiseModel {
+            t1: 150.0,
+            t2: 80.0,
+            p_depolarize: 0.003,
+            gate_time: 1.0,
+        };
+        let initial = vec![PrimitiveState::One; n];
+
+        let mut instructions = Vec::new();
+        // 1. Initial superposition
+        instructions.push((Gate::H, 0, None));
+        
+        // 2-8. Entanglement cascade
+        for i in 0..7 {
+            instructions.push((Gate::X, i + 1, Some(i))); 
+        }
+
+        let timeline = CircuitTimeline::generate(
+            n, 
+            instructions, 
+            &initial,
+            Some(noise)
+        );
+
+        println!("\n--- 8-Qubit GHZ Entanglement Decay ---");
+        for (step) in timeline.steps.iter() {
+            println!("Fidelity = {:.4}", step.fidelity);
+        }
     }
 }

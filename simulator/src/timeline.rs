@@ -55,7 +55,7 @@ impl CircuitTimeline {
                     ideal_state.apply_cnot(ctrl, target);
                     noisy_state.apply_cnot(ctrl, target);
                     noisy_state.apply_depolarizing_noise(ctrl);
-                        noisy_state.apply_depolarizing_noise(target);
+                    noisy_state.apply_depolarizing_noise(target);
                 }
                 // All other gates are treated as single qubit operations for now
                 (_g, _) => {

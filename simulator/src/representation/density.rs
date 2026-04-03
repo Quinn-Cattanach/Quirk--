@@ -111,28 +111,28 @@ impl Density {
         let shape = vec![2; 2 * n];
         let mut next_rho = Array::zeros(IxDyn(&shape));
 
-        // E_k_dagger pre calculation
         let ops_dag: Vec<(&Array2<Complex32>, Array2<Complex32>)> = operators
             .iter()
             .map(|e_k| (e_k, e_k.mapv(|c| c.conj()).reversed_axes()))
             .collect();
         
-        for (e_k, e_k_dag) in ops_dag {
-            for (idx, _b) in self.data.indexed_iter() {
-                let r = idx[q];
-                let c = idx[q + n];
+        // Iterate through every element in the current density matrix
+        for (idx, &amp) in self.data.indexed_iter() {
+            if amp == Complex32::new(0.0, 0.0) { continue; }
 
-                let amp = self.data[idx.clone()];
-                if amp == Complex32::new(0.0, 0.0) { continue; }
+            let r = idx[q];     // Row index for qubit q
+            let c = idx[q + n]; // Col index for qubit q
 
+            for (e_k, e_k_dag) in &ops_dag {
                 for i in 0..2 {
                     for j in 0..2 {
-                        let mut next = idx.as_array_view().to_vec();
-                        next[q] = i;
-                        next[q+n] = j;
+                        let mut next_idx = idx.as_array_view().to_vec();
+                        next_idx[q] = i;
+                        next_idx[q + n] = j;
 
-                        // Kraus update: rho' += E_k[i, r] * rho[r, c] * E_k_dag[c, j]
-                        next_rho[IxDyn(&next)] += e_k[[i, r]] * amp * e_k_dag[[c, j]];
+                        // Update ONLY the dimensions corresponding to qubit q
+                        // while keeping all other indices from 'idx' the same.
+                        next_rho[IxDyn(&next_idx)] += e_k[[i, r]] * amp * e_k_dag[[c, j]];
                     }
                 }
             }

@@ -88,7 +88,7 @@ impl State for Density {
         let u = gate.matrix();
         let n = self.n_qbit();
         let shape = vec![2; 2 * n];
-        let mut new = Array::zeros(IxDyn(&shape));
+        let mut new = Array::zeros(self.data.raw_dim());
 
         for (idx, &amp) in self.data.indexed_iter() {
             let base = idx.slice().to_vec();
@@ -98,7 +98,7 @@ impl State for Density {
 
             for i in 0..2 {
                 for j in 0..2 {
-                    let mut new_idx = base.clone();
+                    let mut new_idx = idx.as_array_view().to_vec();
                     new_idx[q] = i;
                     new_idx[q + n] = j;
 
