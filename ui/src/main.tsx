@@ -1,19 +1,16 @@
-import { StrictMode } from 'react';
-import { createRoot } from 'react-dom/client';
-import App from './App.tsx';
-import './index.css';
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import App from "./App.tsx";
+import "./index.css";
 
-import MathJax from 'mathjax';
+const html = document.getElementsByTagName("html").item(0)!;
+const root = document.getElementById("root")!;
 
-await MathJax.init({
-  loader: { load: ['input/tex', 'output/svg'] } // specify input and output formats
-});
+html.style.overscrollBehaviorX = "none";
+html.style.overscrollBehaviorY = "none";
 
-const svg = await MathJax.tex2svgPromise('\\frac{1}{x^2-1}', { display: true });
-console.log(MathJax.startup.adaptor.serializeXML(svg));
-
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-)
+createRoot(root).render(
+    <StrictMode>
+        <App />
+    </StrictMode>,
+);

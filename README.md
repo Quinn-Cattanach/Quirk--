@@ -18,7 +18,6 @@ npm install
 npm run dev
 ```
 
-
 # Simulator
 
 I'm setting up a basic simulator using the ,
