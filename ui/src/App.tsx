@@ -7,7 +7,6 @@ import type { Circuit } from "./simulator/bindings/Circuit";
 import { greet } from "./simulator/pkg/quirkmm_simulator";
 import { renderBloch } from "./state/bloch";
 import { SingleQbitState } from "./state/single-qbit";
-import MathJax from "./MathJax";
 import { Layout } from "./layout";
 
 function App() {

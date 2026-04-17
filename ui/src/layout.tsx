@@ -5,8 +5,10 @@ import {
     useState,
     type PropsWithChildren,
 } from "react";
-import { Toolbar } from "./toolbar/toolbar-layout";
+import { Toolbar, type ToolbarItem } from "./toolbar/toolbar-layout";
 import { Plus } from "lucide-react";
+import { GateToolbarItem } from "./gate/toolbar-item";
+import { Gate, primitiveGates } from "./gate/gate";
 
 export type LayoutContext = {
     mobile: boolean;
@@ -60,6 +62,12 @@ export const Layout = ({ children }: PropsWithChildren) => {
         };
     }, []);
 
+    const bgMask = `linear-gradient(
+        to bottom,
+        rgba(0,0,0,0.075) 0%,
+        rgba(0,0,0,0.075) 100%
+    )`;
+
     return (
         <layoutContext.Provider value={{ mobile }}>
             <div ref={pageRef} className={`w-lvw h-lvh relative flex flex-col`}>
@@ -74,8 +82,20 @@ export const Layout = ({ children }: PropsWithChildren) => {
                     className={`w-full h-full bg-neutral-100 flex ${mobile ? "flex-col" : "flex-row"}`}
                 >
                     <div
+                        aria-hidden
+                        className="absolute inset-0 pointer-events-none"
+                        style={{
+                            backgroundImage: 'url("/grid.svg")',
+                            backgroundRepeat: "repeat",
+                            backgroundSize: "50px 29px",
+                            backgroundBlendMode: "multiply",
+                            WebkitMaskImage: bgMask,
+                            maskImage: bgMask,
+                        }}
+                    />
+                    <div
                         ref={toolbarContainerRef}
-                        className={`flex-1 ${mobile ? "max-h-96" : "max-w-96"}`}
+                        className={`flex-1 z-1 ${mobile ? "max-h-96" : "max-w-96"}`}
                     >
                         <Toolbar
                             title="Circuit Components"
@@ -85,17 +105,20 @@ export const Layout = ({ children }: PropsWithChildren) => {
                                     initiallyCollapsed: false,
                                     label: "Single Qbit Gates",
                                     items: [
-                                        {
-                                            type: "custom",
-                                            element: (
-                                                <div className="w-full h-10 flex items-center">
-                                                    <p className="font-medium text-sm">
-                                                        Hadamard
-                                                    </p>
-                                                    <canvas className="ml-auto w-10 h-10"></canvas>
-                                                </div>
-                                            ),
-                                        },
+                                        ...primitiveGates.map<ToolbarItem>(
+                                            (gate) => {
+                                                return {
+                                                    type: "custom",
+                                                    element: (
+                                                        <GateToolbarItem
+                                                            gate={Gate.fromPrimitive(
+                                                                gate,
+                                                            )}
+                                                        />
+                                                    ),
+                                                };
+                                            },
+                                        ),
                                         {
                                             type: "button",
                                             label: "Create new gate",
