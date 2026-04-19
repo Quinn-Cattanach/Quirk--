@@ -4,14 +4,19 @@ import {
     useRef,
     useState,
     type PropsWithChildren,
+    type RefObject,
 } from "react";
 import { Toolbar, type ToolbarItem } from "./toolbar/toolbar-layout";
 import { Plus } from "lucide-react";
 import { GateToolbarItem } from "./gate/toolbar-item";
-import { Gate, primitiveGates } from "./gate/gate";
+import { CircuitComponent, primitiveGates } from "./gate/gate";
+import { EditorToolbar } from "./toolbar/editor-toolbar";
+import { InspectorToolbar } from "./toolbar/inspector-toolbar";
 
 export type LayoutContext = {
     mobile: boolean;
+    dragRef: RefObject<HTMLDivElement | null>;
+    setDragging: (value: boolean) => void;
 };
 
 export const layoutContext = createContext<LayoutContext>(
@@ -21,6 +26,7 @@ export const layoutContext = createContext<LayoutContext>(
 export const Layout = ({ children }: PropsWithChildren) => {
     const pageRef = useRef<HTMLDivElement | null>(null);
     const dragRef = useRef<HTMLDivElement | null>(null);
+    const [dragging, setDragging] = useState(false);
     const [mobile, setMobile] = useState(false);
 
     const toolbarContainerRef = useRef<HTMLDivElement | null>(null);
@@ -69,69 +75,67 @@ export const Layout = ({ children }: PropsWithChildren) => {
     )`;
 
     return (
-        <layoutContext.Provider value={{ mobile }}>
+        <layoutContext.Provider value={{ mobile, dragRef, setDragging }}>
             <div ref={pageRef} className={`w-lvw h-lvh relative flex flex-col`}>
                 <div
                     ref={dragRef}
-                    className="w-lvw h-lvh absolute top-0 left-0 z-10 pointer-events-none"
+                    className={`w-lvw h-lvh absolute top-0 left-0 z-10 ${dragging ? "" : "pointer-events-none"}`}
                 ></div>
                 <div className="h-18 w-full bg-white flex border-b border-b-neutral-200 z-5">
                     <div className="my-auto mx-10 w-fit">quirk--</div>
                 </div>
                 <div
-                    className={`w-full h-full bg-neutral-100 flex ${mobile ? "flex-col" : "flex-row"}`}
+                    className={`w-full h-full min-h-0 bg-neutral-100 flex ${
+                        mobile ? "flex-col" : "flex-row"
+                    }`}
                 >
+                    {/* background */}
                     <div
                         aria-hidden
                         className="absolute inset-0 pointer-events-none"
                         style={{
                             backgroundImage: 'url("/grid.svg")',
                             backgroundRepeat: "repeat",
-                            backgroundSize: "50px 29px",
+                            backgroundSize: "37.5px 21.75px",
                             backgroundBlendMode: "multiply",
                             WebkitMaskImage: bgMask,
                             maskImage: bgMask,
                         }}
                     />
+
                     <div
-                        ref={toolbarContainerRef}
-                        className={`flex-1 z-1 ${mobile ? "max-h-96" : "max-w-96"}`}
+                        className={`z-1 ${
+                            mobile ? "hidden" : "flex-1 max-w-80"
+                        }`}
                     >
-                        <Toolbar
-                            title="Circuit Components"
-                            items={[
-                                {
-                                    type: "collapse-group",
-                                    initiallyCollapsed: false,
-                                    label: "Single Qbit Gates",
-                                    items: [
-                                        ...primitiveGates.map<ToolbarItem>(
-                                            (gate) => {
-                                                return {
-                                                    type: "custom",
-                                                    element: (
-                                                        <GateToolbarItem
-                                                            gate={Gate.fromPrimitive(
-                                                                gate,
-                                                            )}
-                                                        />
-                                                    ),
-                                                };
-                                            },
-                                        ),
-                                        {
-                                            type: "button",
-                                            label: "Create new gate",
-                                            icon: <Plus className="size-4" />,
-                                        },
-                                    ],
-                                },
-                            ]}
-                        ></Toolbar>
+                        <EditorToolbar />
                     </div>
-                    <div ref={contentContainerRef} className={`flex-2`}>
+
+                    <div
+                        ref={contentContainerRef}
+                        className={`z-1 ${mobile ? "flex-1" : "flex-2"}`}
+                    >
                         {children}
                     </div>
+
+                    <div
+                        className={`z-1 ${
+                            mobile ? "hidden" : "flex-1 max-w-80"
+                        }`}
+                    >
+                        <InspectorToolbar />
+                    </div>
+
+                    {mobile && (
+                        <div className="z-1 flex flex-row w-full  mt-auto max-h-96">
+                            <div className="flex-1">
+                                <EditorToolbar />
+                            </div>
+                            <div className="flex-1">
+                                <InspectorToolbar />
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
         </layoutContext.Provider>

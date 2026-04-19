@@ -31,7 +31,7 @@ const Item = ({ item, path }: { item: ToolbarItem; path?: string }) => {
         case "button": {
             return (
                 <button
-                    className="hover:bg-neutral-100 duration-100 w-full text-sm py-2 cursor-pointer rounded-sm"
+                    className="hover:bg-neutral-100 border border-neutral-200  bg-white duration-100 shadow-md shadow-black/3 w-full text-sm py-2 cursor-pointer rounded-lg"
                     onClick={item.onClick}
                 >
                     <span className="flex gap-2 items-center m-auto w-fit">
@@ -50,7 +50,7 @@ const Item = ({ item, path }: { item: ToolbarItem; path?: string }) => {
         }
         case "divider": {
             return (
-                <div className="w-full px-2">
+                <div className="w-full px-2 py-2">
                     <div className="w-full h-0 border-b border-neutral-200"></div>
                 </div>
             );
@@ -61,7 +61,7 @@ const Item = ({ item, path }: { item: ToolbarItem; path?: string }) => {
             return (
                 <div className="w-full flex flex-col gap-2 relative">
                     <button
-                        className="cursor-pointer flex items-center rounded-sm hover:bg-neutral-50 duration-100 py-2 px-2 z-2"
+                        className="cursor-pointer flex items-center rounded-sm hover:bg-neutral-100 duration-100 py-2 px-2 z-2"
                         onClick={() => setCollapsed((p) => !p)}
                     >
                         <div className="font-semibold text-md truncate">
@@ -75,19 +75,21 @@ const Item = ({ item, path }: { item: ToolbarItem; path?: string }) => {
                     </button>
 
                     <div
-                        className={`overflow-hidden transition-all duration-100 rounded-sm px-4 flex flex-col gap-2 ${
+                        className={`overflow-hidden transition-all duration-100 bg-neutral-100 rounded-md ${
                             collapsed
                                 ? "max-h-0 opacity-0 -translate-y-5"
                                 : "max-h-96 opacity-100"
                         }`}
                     >
-                        {item.items.map((subItem, index) => (
-                            <Item
-                                key={`${path ? path + "/" : ""}${item.label}/${index}`}
-                                item={subItem}
-                                path={path + item.label}
-                            />
-                        ))}
+                        <div className="flex flex-col gap-2 p-4">
+                            {item.items.map((subItem, index) => (
+                                <Item
+                                    key={`${path ? path + "/" : ""}${item.label}/${index}`}
+                                    item={subItem}
+                                    path={path + item.label}
+                                />
+                            ))}
+                        </div>
                     </div>
                 </div>
             );
@@ -112,7 +114,7 @@ export const Toolbar = ({
                     {title}
                 </div>
                 <div className="border-b border-neutral-200 h-0 w-full"></div>
-                <div className="flex flex-col gap-2 p-2">
+                <div className="flex flex-col gap-2 p-2 overflow-y-auto flex-1">
                     {items.map((item) => (
                         <Item item={item} />
                     ))}

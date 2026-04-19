@@ -1,5 +1,5 @@
-import type { Gate } from "../gate/gate";
+import type { CircuitComponent } from "../gate/gate";
 
-export class Circuit {
-    #components: (Gate | "measurement" | "density" | null)[][];
-}
+// export class Circuit {
+//     #components: CircuitComponent[][];
+// }

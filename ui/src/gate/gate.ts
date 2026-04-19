@@ -9,7 +9,7 @@ export const primitiveGates: PrimitiveGate[] = [
     "pauli-z",
 ];
 
-export class Gate {
+export class CircuitComponent {
     private static primitiveGateLabel: Record<PrimitiveGate, string> = {
         hadamard: "Hadamard",
         "pauli-x": "Pauli X (Not)",
@@ -45,6 +45,8 @@ export class Gate {
         });
     }
 
+    #widthOverride: number = 0;
+
     #latexString: string;
     set latexString(newValue: string) {
         this.#latexString = newValue;
@@ -63,15 +65,17 @@ export class Gate {
 
     get width(): number {
         return (
-            (this.#bitmap?.width ?? 20.0) +
-            2 * Gate.paddingUnscaled * devicePixelRatio
+            (this.#widthOverride
+                ? this.#widthOverride
+                : (this.#bitmap?.width ?? 20.0)) +
+            2 * CircuitComponent.paddingUnscaled * devicePixelRatio
         );
     }
 
     get height(): number {
         return (
             (this.#bitmap?.height ?? 20.0) +
-            2 * Gate.paddingUnscaled * devicePixelRatio
+            2 * CircuitComponent.paddingUnscaled * devicePixelRatio
         );
     }
 
@@ -83,17 +87,27 @@ export class Gate {
         ctx.beginPath();
         ctx.rect(0, 0, w, h);
         ctx.strokeStyle = "#000000";
-        ctx.lineWidth = Gate.strokeWidthUnscaled * devicePixelRatio;
+        ctx.fillStyle = "#FFFFFF";
+        ctx.lineWidth = CircuitComponent.strokeWidthUnscaled * devicePixelRatio;
+        ctx.fill();
         ctx.stroke();
 
-        ctx.translate(
-            Gate.paddingUnscaled * devicePixelRatio,
-            Gate.paddingUnscaled * devicePixelRatio,
-        );
+        let [tx, ty] = [
+            CircuitComponent.paddingUnscaled * devicePixelRatio,
+            CircuitComponent.paddingUnscaled * devicePixelRatio,
+        ];
+
+        if (this.#widthOverride > 0) {
+            tx += (this.#widthOverride - (this.#bitmap?.width ?? 20)) / 2;
+        }
+
+        ctx.translate(tx, ty);
 
         if (this.bitmap) ctx.drawImage(this.bitmap, 0, 0);
-        else ctx.fillText("?", 0, 0);
-
+        else {
+            ctx.font = `${24 * devicePixelRatio}px sans-serif`;
+            ctx.fillText("?", 0, 22 * devicePixelRatio);
+        }
         ctx.restore();
     }
 
@@ -113,15 +127,19 @@ export class Gate {
         this.rerender();
     }
 
-    static createSingleQbit(): Result<Gate, string> {
+    static createSingleQbit(): Result<CircuitComponent, string> {
         return err("The gate must be a unitary operator.");
         // return ok(new Gate());
     }
 
-    static fromPrimitive(primitive: PrimitiveGate): Gate {
-        return new Gate({
-            label: Gate.primitiveGateLabel[primitive],
-            latexString: Gate.primitiveGateLatex[primitive],
+    static fromPrimitive(primitive: PrimitiveGate): CircuitComponent {
+        const gate = new CircuitComponent({
+            label: CircuitComponent.primitiveGateLabel[primitive],
+            latexString: CircuitComponent.primitiveGateLatex[primitive],
         });
+
+        gate.#widthOverride = 60;
+
+        return gate;
     }
 }
