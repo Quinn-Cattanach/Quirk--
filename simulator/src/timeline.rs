@@ -18,58 +18,36 @@ pub struct CircuitTimeline {
 impl CircuitTimeline {
     pub fn generate(
         n_qubits: usize, 
-        instructions: Vec<(Gate, usize, Option<usize>)>, // (Gate, Target, Control)
+        instructions: Vec<(Gate, usize, Option<usize>)>, 
         initial_state: &[PrimitiveState],
         noise: Option<NoiseModel>
     ) -> Self {
-        // Initialize states
+        // Initialize the states
         let mut ideal_state = Vector::init(n_qubits).init_state(initial_state);
-        let mut noisy_state = match noise {
-            Some(m) => Density::init_with_noise(n_qubits, m).init_state(initial_state),
-            None => Density::init(n_qubits).init_state(initial_state),
-        };
+        let mut noisy_state = Density::init(n_qubits).init_state(initial_state);
         
         let mut steps = Vec::new();
 
-        // Initial state fidelity (1.0)
+        // Record Initial State
         steps.push(TimeStep {
             gate: None,
             fidelity: 1.0,
         });
 
         for (gate, target, control) in instructions {
+            // Apply operation to ideal state (unitary only)
             match (gate, control) {
-                // Handle 2-Qubit Gates
-                // just have control gate generally and Z
-                (Gate::CZ, Some(ctrl)) => {
-                    if let Some(ctrl) = control {
-                        ideal_state.apply_cz(ctrl, target);
-                        noisy_state.apply_cz(ctrl, target);
-                        
-                        // Noise affects both participants
-                        noisy_state.apply_depolarizing_noise(ctrl);
-                        noisy_state.apply_depolarizing_noise(target);
-                    }
-                },
-                // CNOT
-                (Gate::X, Some(ctrl)) => {
-                    ideal_state.apply_cnot(ctrl, target);
-                    noisy_state.apply_cnot(ctrl, target);
-                    noisy_state.apply_depolarizing_noise(ctrl);
-                    noisy_state.apply_depolarizing_noise(target);
-                }
-                // All other gates are treated as single qubit operations for now
-                (_g, _) => {
-                    ideal_state.apply_single(gate, target);
-                    noisy_state.apply_single(gate, target);
-                    noisy_state.apply_depolarizing_noise(target);
-                }
+                (Gate::SWAP, Some(c)) => ideal_state.apply_swap(c, target),
+                (g, Some(c)) => ideal_state.apply_controlled(g, c, target, None),
+                (g, None) => ideal_state.apply(g, target, None),
             }
 
-            // Global Decoherence: T1 and T2 happen to EVERY qubit during t_gate
-            for i in 0..n_qubits {
-                noisy_state.apply_decoherence(i);
-                noisy_state.apply_phase_damping(i);
+            // Apply operation to noisy state using your new atomic method
+            // This handles the unitary + gate noise + global decoherence automatically
+            match (gate, control) {
+                (Gate::SWAP, Some(c)) => noisy_state.apply_swap(c, target, noise),
+                (g, Some(c)) => noisy_state.apply_controlled(g, c, target, noise),
+                (g, None) => noisy_state.apply(g, target, noise),
             }
 
             steps.push(TimeStep {
@@ -77,6 +55,71 @@ impl CircuitTimeline {
                 fidelity: noisy_state.calculate_fidelity(&ideal_state),
             });
         }
+
+        Self { steps }
+    }
+
+    // pub fn generate(
+    //     n_qubits: usize, 
+    //     instructions: Vec<(Gate, usize, Option<usize>)>, // (Gate, Target, Control)
+    //     initial_state: &[PrimitiveState],
+    //     noise: Option<NoiseModel>
+    // ) -> Self {
+    //     // Initialize states
+    //     let mut ideal_state = Vector::init(n_qubits).init_state(initial_state);
+    //     let mut noisy_state = match noise {
+    //         Some(m) => Density::init_with_noise(n_qubits, m).init_state(initial_state),
+    //         None => Density::init(n_qubits).init_state(initial_state),
+    //     };
+        
+    //     let mut steps = Vec::new();
+
+    //     // Initial state fidelity (1.0)
+    //     steps.push(TimeStep {
+    //         gate: None,
+    //         fidelity: 1.0,
+    //     });
+
+        // for (gate, target, control) in instructions {
+        //     match (gate, control) {
+        //         // Handle 2-Qubit Gates
+        //         // just have control gate generally and Z
+        //         (Gate::CZ, Some(ctrl)) => {
+        //             if let Some(ctrl) = control {
+        //                 ideal_state.apply_cz(ctrl, target);
+        //                 noisy_state.apply_cz(ctrl, target);
+                        
+        //                 // Noise affects both participants
+        //                 noisy_state.apply_depolarizing_noise(ctrl);
+        //                 noisy_state.apply_depolarizing_noise(target);
+        //             }
+        //         },
+        //         // CNOT
+        //         (Gate::X, Some(ctrl)) => {
+        //             ideal_state.apply_cnot(ctrl, target);
+        //             noisy_state.apply_cnot(ctrl, target);
+        //             noisy_state.apply_depolarizing_noise(ctrl);
+        //             noisy_state.apply_depolarizing_noise(target);
+        //         }
+        //         // All other gates are treated as single qubit operations for now
+        //         (_g, _) => {
+        //             ideal_state.apply_single(gate, target);
+        //             noisy_state.apply_single(gate, target);
+        //             noisy_state.apply_depolarizing_noise(target);
+        //         }
+        //     }
+
+        //     // Global Decoherence: T1 and T2 happen to EVERY qubit during t_gate
+        //     for i in 0..n_qubits {
+        //         noisy_state.apply_decoherence(i);
+        //         noisy_state.apply_phase_damping(i);
+        //     }
+
+        //     steps.push(TimeStep {
+        //         gate: Some(gate),
+        //         fidelity: noisy_state.calculate_fidelity(&ideal_state),
+        //     });
+        // }
 
         // // Evolve states and record fidelity
         // for (gate, q) in instructions {
@@ -97,6 +140,6 @@ impl CircuitTimeline {
         //     });
         // }
 
-        Self { steps }
-    }
+    //     Self { steps }
+    // }
 }

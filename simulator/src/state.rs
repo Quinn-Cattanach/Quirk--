@@ -110,6 +110,18 @@ impl State for Density {
         self.data = new;
     }
 
+    fn apply_gate_noise_and_decoherence(&mut self, ctrl: Option<usize>, target: usize, m: NoiseModel) {
+        self.noise = Some(m);
+        self.apply_depolarizing_noise(target);
+        if let Some(c) = ctrl { self.apply_depolarizing_noise(c); }
+
+        let n_total = self.n_qbit();
+        for i in 0..n_total {
+            self.apply_decoherence(i);
+            self.apply_phase_damping(i);
+        }
+    }
+
     pub fn apply(&mut self, gate: Gate, target: usize, noise: Option<NoiseModel>) {
         // Since Gate::SWAP is handled by a separate function, we 
         // focus on the 2x2 unitaries for H, X, Y, and Z.
@@ -221,18 +233,6 @@ impl State for Density {
         }
 
         self.data = new;
-    }
-
-    fn apply_gate_noise_and_decoherence(&mut self, ctrl: Option<usize>, target: usize, m: NoiseModel) {
-        self.noise = Some(m);
-        self.apply_depolarizing_noise(target);
-        if let Some(c) = ctrl { self.apply_depolarizing_noise(c); }
-
-        let n_total = self.n_qbit();
-        for i in 0..n_total {
-            self.apply_decoherence(i);
-            self.apply_phase_damping(i);
-        }
     }
 
     // fn apply_cz(&mut self, control: usize, target: usize) {
