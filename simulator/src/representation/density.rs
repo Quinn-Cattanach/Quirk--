@@ -4,7 +4,6 @@ use num_complex::Complex32;
 use crate::representation::{primitives::PrimitiveState, vector::Vector};
 use crate::noise::NoiseModel;
 use crate::gates::Gate;
-use crate::state::State;
 
 pub struct Density {
     pub data: Array<Complex32, IxDyn>,
@@ -203,5 +202,17 @@ impl Density {
         ]).unwrap();
 
         self.apply_kraus_map(q, &[e0, e1]);
+    }
+
+    pub fn apply_gate_noise_and_decoherence(&mut self, ctrl: Option<usize>, target: usize, m: NoiseModel) {
+        self.noise = Some(m);
+        self.apply_depolarizing_noise(target);
+        if let Some(c) = ctrl { self.apply_depolarizing_noise(c); }
+
+        let n_total = self.data.ndim() / 2;
+        for i in 0..n_total {
+            self.apply_decoherence(i);
+            self.apply_phase_damping(i);
+        }
     }
 }

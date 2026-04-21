@@ -1,7 +1,9 @@
 use crate::gates::Gate;
+use crate::noise::NoiseModel;
 use crate::representation::{density::Density, vector::Vector};
+use crate::ZERO_COMPLEX;
 use ndarray::{Array, Dimension, IxDyn};
-use num_complex::Complex32;
+use num_complex::{Complex32};
 
 pub trait State {
     fn n_qbit(&self) -> usize;
@@ -10,7 +12,11 @@ pub trait State {
 
     fn apply_single(&mut self, gate: Gate, q: usize);
     fn apply_cnot(&mut self, control: usize, target: usize);
-    fn apply_cz(&mut self, control: usize, target: usize);
+
+    fn apply(&mut self, gate: Gate, target: usize, noise: Option<NoiseModel>);
+    fn apply_swap(&mut self, q1: usize, q2: usize, noise: Option<NoiseModel>);
+    fn apply_controlled(&mut self, gate: Gate, control: usize, target: usize, noise: Option<NoiseModel>);
+
 }
 
 impl State for Vector {
@@ -62,12 +68,66 @@ impl State for Vector {
         self.data = new;
     }
 
-    fn apply_cz(&mut self, control: usize, target: usize) {
-        for (idx, amp) in self.data.indexed_iter_mut() {
-            if idx[control] == 1 && idx[target] == 1 {
-                *amp *= -1.0;
+    fn apply(&mut self, gate: Gate, target: usize, _noise: Option<NoiseModel>) {
+        let u = gate.matrix();
+        let mut new_data = Array::zeros(self.data.raw_dim());
+
+        for (idx, &amp) in self.data.indexed_iter() {
+            if amp == ZERO_COMPLEX { continue; }
+
+            let r = idx[target]; // current row index of the target qubit
+
+            for i in 0..2 {
+                let mut next_idx = idx.as_array_view().to_vec();
+                next_idx[target] = i;
+                
+                // Pure state update: |psi'> = U |psi>
+                new_data[IxDyn(&next_idx)] += u[[i, r]] * amp;
             }
         }
+        self.data = new_data;
+    }
+
+    /// Swaps the states of two qubits.
+    fn apply_swap(&mut self, q1: usize, q2: usize, _noise: Option<NoiseModel>) {
+        let mut next_data = Array::zeros(self.data.raw_dim());
+
+        for (idx, &amp) in self.data.indexed_iter() {
+            if amp == ZERO_COMPLEX { continue; }
+
+            let mut next_idx = idx.as_array_view().to_vec();
+            
+            // Swap the indices for the two qubits
+            next_idx.swap(q1, q2);
+
+            next_data[IxDyn(&next_idx)] = amp;
+        }
+        self.data = next_data;
+    }
+
+    /// Applies a controlled unitary operation.
+    fn apply_controlled(&mut self, gate: Gate, control: usize, target: usize, _noise: Option<NoiseModel>) {
+        let u = gate.matrix();
+        let mut new_data = Array::zeros(self.data.raw_dim());
+
+        for (idx, &amp) in self.data.indexed_iter() {
+            if amp == ZERO_COMPLEX { continue; }
+
+            let mut next_idx = idx.as_array_view().to_vec();
+            
+            // If the control qubit is |1>, apply the gate to the target
+            if idx[control] == 1 {
+                let r = idx[target];
+                for i in 0..2 {
+                    next_idx[target] = i;
+                    new_data[IxDyn(&next_idx)] += u[[i, r]] * amp;
+                }
+            } else {
+                // If control is |0>, the amplitude transfers directly
+                new_data[idx.clone()] += amp;
+            }
+        }
+        self.data = new_data;
     }
 }
 
@@ -110,19 +170,29 @@ impl State for Density {
         self.data = new;
     }
 
-    fn apply_gate_noise_and_decoherence(&mut self, ctrl: Option<usize>, target: usize, m: NoiseModel) {
-        self.noise = Some(m);
-        self.apply_depolarizing_noise(target);
-        if let Some(c) = ctrl { self.apply_depolarizing_noise(c); }
+    fn apply_cnot(&mut self, control: usize, target: usize) {
+        let n = self.n_qbit();
+        let shape = vec![2; 2 * n];
+        let mut new = Array::zeros(IxDyn(&shape));
 
-        let n_total = self.n_qbit();
-        for i in 0..n_total {
-            self.apply_decoherence(i);
-            self.apply_phase_damping(i);
+        for (idx, &amp) in self.data.indexed_iter() {
+            let mut new_idx = idx.slice().to_vec();
+
+            if new_idx[control] == 1 {
+                new_idx[target] ^= 1;
+            }
+
+            if new_idx[control + n] == 1 {
+                new_idx[target + n] ^= 1;
+            }
+
+            new[IxDyn(&new_idx)] += amp;
         }
+
+        self.data = new;
     }
 
-    pub fn apply(&mut self, gate: Gate, target: usize, noise: Option<NoiseModel>) {
+    fn apply(&mut self, gate: Gate, target: usize, noise: Option<NoiseModel>) {
         // Since Gate::SWAP is handled by a separate function, we 
         // focus on the 2x2 unitaries for H, X, Y, and Z.
         let u = gate.matrix();
@@ -154,7 +224,7 @@ impl State for Density {
         }
     }
 
-    pub fn apply_swap(&mut self, q1: usize, q2: usize, noise: Option<NoiseModel>) {
+    fn apply_swap(&mut self, q1: usize, q2: usize, noise: Option<NoiseModel>) {
         let n = self.n_qbit();
         let mut next_rho = Array::zeros(self.data.raw_dim());
 
@@ -177,7 +247,7 @@ impl State for Density {
         }
     }
 
-    pub fn apply_controlled(&mut self, gate: Gate, control: usize, target: usize, noise: Option<NoiseModel>) {
+    fn apply_controlled(&mut self, gate: Gate, control: usize, target: usize, noise: Option<NoiseModel>) {
         let u = gate.matrix(); // Get the 2x2 matrix for the gate
         let n = self.n_qbit();
         let mut new_data = Array::zeros(self.data.raw_dim());
@@ -211,28 +281,6 @@ impl State for Density {
         if let Some(m) = noise {
             self.apply_gate_noise_and_decoherence(Some(control), target, m);
         }
-    }
-
-    fn apply_cnot(&mut self, control: usize, target: usize) {
-        let n = self.n_qbit();
-        let shape = vec![2; 2 * n];
-        let mut new = Array::zeros(IxDyn(&shape));
-
-        for (idx, &amp) in self.data.indexed_iter() {
-            let mut new_idx = idx.slice().to_vec();
-
-            if new_idx[control] == 1 {
-                new_idx[target] ^= 1;
-            }
-
-            if new_idx[control + n] == 1 {
-                new_idx[target + n] ^= 1;
-            }
-
-            new[IxDyn(&new_idx)] += amp;
-        }
-
-        self.data = new;
     }
 
     // fn apply_cz(&mut self, control: usize, target: usize) {

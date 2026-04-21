@@ -37,7 +37,7 @@ impl CircuitTimeline {
         for (gate, target, control) in instructions {
             // Apply operation to ideal state (unitary only)
             match (gate, control) {
-                (Gate::SWAP, Some(c)) => ideal_state.apply_swap(c, target),
+                (Gate::SWAP, Some(c)) => ideal_state.apply_swap(c, target, None),
                 (g, Some(c)) => ideal_state.apply_controlled(g, c, target, None),
                 (g, None) => ideal_state.apply(g, target, None),
             }
@@ -120,26 +120,6 @@ impl CircuitTimeline {
         //         fidelity: noisy_state.calculate_fidelity(&ideal_state),
         //     });
         // }
-
-        // // Evolve states and record fidelity
-        // for (gate, q) in instructions {
-        //     ideal_state.apply_single(gate, q);
-            
-        //     noisy_state.apply_single(gate, q);
-            
-        //     // apply unified noise model
-        //     noisy_state.apply_depolarizing_noise(q); // Pauli flips
-        //     noisy_state.apply_decoherence(q); // T1 relaxation
-        //     noisy_state.apply_phase_damping(q); // T2 dephasing
-            
-        //     let current_fidelity = noisy_state.calculate_fidelity(&ideal_state);
-            
-        //     steps.push(TimeStep {
-        //         gate: Some(gate),
-        //         fidelity: current_fidelity,
-        //     });
-        // }
-
     //     Self { steps }
     // }
 }
