@@ -21,6 +21,7 @@ mod tests {
         representation::{density::Density, primitives::PrimitiveState, vector::Vector},
         state::State,
         noise::NoiseModel,
+        timeline::CircuitTimeline,
     };
     use std::iter::zip;
 
@@ -149,7 +150,6 @@ mod tests {
         println!("Step 1 (Bell State): Fidelity = {:.4}", f_bell);
         
         // If noise is Some, fidelity will be < 1.0. 
-        // To match your old test's "1.0" assertion, you'd pass None to noisy_rho too.
         assert!(f_bell < 1.0, "Noisy evolution should show fidelity decay"); 
 
         // 3. Comparison with Orthogonal State
@@ -165,60 +165,76 @@ mod tests {
     fn test_fidelity_phase_gate() {
         let n = 1;
         let initial = [PrimitiveState::Plus]; // |+> state
+        let noise = Some(NoiseModel::default()); // Define the noise model
         
         let mut ideal_vec = Vector::init(n).init_state(&initial);
         let mut noisy_rho = Density::init(n).init_state(&initial);
         
-        println!("\n--- Phase Gate Test (|H> -> |Z> -> |-H>) ---");
+        println!("\n--- Refactored Phase Gate Test (|H> -> |Z> -> |-H>) ---");
 
         // Apply Z gate: |+> should become |->
-        ideal_vec.apply_single(Gate::Z, 0);
-        noisy_rho.apply_single(Gate::Z, 0);
+        // Ideal state uses None to remain perfectly noiseless
+        ideal_vec.apply(Gate::Z, 0, None);
+        
+        // Noisy state undergoes the unitary rotation + unified noise
+        noisy_rho.apply(Gate::Z, 0, noise);
         
         let f_z = noisy_rho.calculate_fidelity(&ideal_vec);
         println!("Fidelity after Z gate: {:.4}", f_z);
-        assert!((f_z - 1.0).abs() < 1e-6);
+        
+        // Expect fidelity to be slightly less than 1.0 due to T1/T2 and gate noise
+        assert!(f_z < 1.0 && f_z > 0.95, "Noisy evolution should show minor fidelity decay");
 
-        // Cross-check: Fidelity of this new state vs the original |+> should be 0.0
+        // Cross-check: Fidelity of this new state vs the original |+> 
         let plus_vec = Vector::init(n).init_state(&[PrimitiveState::Plus]);
         let f_ortho = noisy_rho.calculate_fidelity(&plus_vec);
-        println!("Fidelity vs original |+> (should be 0.0): {:.4}", f_ortho);
-        assert!(f_ortho < 1e-6);
+        
+        println!("Fidelity vs original |+> (should be near 0.0): {:.4}", f_ortho);
+        
+        // The overlap will not be perfectly 0.0 because depolarization mixes the state slightly
+        assert!(f_ortho < 0.05, "Orthogonal state overlap should remain very low");
     }
 
-    // #[test]
-    // fn test_fidelity_entangled_flip() {
-    //     let n = 2;
-    //     let initial = [PrimitiveState::Zero, PrimitiveState::Zero];
+    #[test]
+    fn test_fidelity_entangled_flip() {
+        let n = 2;
+        let initial = [PrimitiveState::Zero, PrimitiveState::Zero];
+        let noise = Some(NoiseModel::default()); // Introduce noise model
         
-    //     let mut ideal_vec = Vector::init(n).init_state(&initial);
-    //     let mut noisy_rho = Density::init(n).init_state(&initial);
+        let mut ideal_vec = Vector::init(n).init_state(&initial);
+        let mut noisy_rho = Density::init(n).init_state(&initial);
         
-    //     // Create Bell State |00> + |11>
-    //     ideal_vec.apply_single(Gate::H, 0);
-    //     ideal_vec.apply_cnot(0, 1);
-    //     noisy_rho.apply_single(Gate::H, 0);
-    //     noisy_rho.apply_cnot(0, 1);
- 
-    //     let bell_reference = Vector {
-    //         data: ideal_vec.data.to_owned(),
-    //     }; // Store the ideal Bell state
-
-    //     println!("\n--- Entangled Bit-Flip Test ---");
-
-    //     // Apply X gate to qubit 1: (|00> + |11>) becomes (|01> + |10>)
-    //     ideal_vec.apply_single(Gate::X, 1);
-    //     noisy_rho.apply_single(Gate::X, 1);
+        // Create Bell State |00> + |11>
+        // Ideal state uses None to remain perfectly noiseless
+        ideal_vec.apply(Gate::H, 0, None);
+        ideal_vec.apply_controlled(Gate::X, 0, 1, None);
         
-    //     let f_flipped = noisy_rho.calculate_fidelity(&ideal_vec);
-    //     println!("Fidelity after X flip: {:.4}", f_flipped);
-    //     assert!((f_flipped - 1.0).abs() < 1e-6);
+        // Noisy state undergoes unitary rotation + unified noise
+        noisy_rho.apply(Gate::H, 0, noise);
+        noisy_rho.apply_controlled(Gate::X, 0, 1, noise);
 
-    //     // Compare the flipped noisy state back to the original Bell reference
-    //     let f_vs_bell = noisy_rho.calculate_fidelity(&bell_reference);
-    //     println!("Fidelity vs original Bell state (should be 0.0): {:.4}", f_vs_bell);
-    //     assert!(f_vs_bell < 1e-6);
-    // }
+        let bell_reference = Vector {
+            data: ideal_vec.data.to_owned(),
+        }; // Store the ideal Bell state
+
+        println!("\n--- Refactored Entangled Bit-Flip Test ---");
+
+        // Apply X gate to qubit 1: (|00> + |11>) becomes (|01> + |10>)
+        ideal_vec.apply(Gate::X, 1, None);
+        noisy_rho.apply(Gate::X, 1, noise);
+        
+        let f_flipped = noisy_rho.calculate_fidelity(&ideal_vec);
+        println!("Fidelity after X flip: {:.4}", f_flipped);
+        
+        assert!(f_flipped < 1.0 && f_flipped > 0.90, "Fidelity should reflect multi-gate noise accumulation");
+
+        // Compare the flipped noisy state back to the original Bell reference
+        let f_vs_bell = noisy_rho.calculate_fidelity(&bell_reference);
+        println!("Fidelity vs original Bell state (should be near 0.0): {:.4}", f_vs_bell);
+        
+        // The overlap will not be perfectly 0.0 because depolarization mixes the state slightly.
+        assert!(f_vs_bell < 0.1, "Fidelity against orthogonal Bell state should remain very low");
+    }
 
     // #[test]
     // fn test_t1_relaxation_decay() {
@@ -273,170 +289,254 @@ mod tests {
     //     assert!((f - 0.90).abs() < 1e-3);
     // }
 
-    // #[test]
-    // fn test_timeline_error_accumulation() {
-    //     let n = 1;
-    //     let noise = NoiseModel::default(); // Uses 0.001 p_depolarize
-    //     let instructions = vec![(Gate::X, 0, None), (Gate::X, 0, None), (Gate::X, 0, None)];
-
-    //     let timeline = CircuitTimeline::generate(
-    //         n, 
-    //         instructions, 
-    //         &[PrimitiveState::Zero],
-    //         Some(noise)
-    //     );
-
-    //     println!("\n--- Timeline Accumulation Test ---");
+    #[test]
+    fn test_timeline_error_accumulation() {
+        let n = 1;
+        let noise = NoiseModel::default(); // Uses 0.001 p_depolarize, plus T1/T2
         
-    //     let f_start = timeline.steps[0].fidelity;
-    //     let f_end = timeline.steps.last().unwrap().fidelity;
+        // Sequence of 3 Bit-Flips
+        let instructions = vec![
+            (Gate::X, 0, None), 
+            (Gate::X, 0, None), 
+            (Gate::X, 0, None)
+        ];
 
-    //     println!("Start Fidelity: {:.4}", f_start);
-    //     println!("End Fidelity after 3 gates: {:.4}", f_end);
+        let timeline = CircuitTimeline::generate(
+            n, 
+            instructions, 
+            &[PrimitiveState::Zero],
+            Some(noise)
+        );
 
-    //     assert!(f_end < f_start, "Fidelity must decrease as more gates are added");
-    // }
-
-    // #[test]
-    // fn test_timeline_2qbit_qft() {
-    //     let n = 2;
-    //     let noise = NoiseModel {
-    //         t1: 100.0, t2: 50.0,
-    //         p_depolarize: 0.005,
-    //         gate_time: 1.0,
-    //     };
-
-    //     // QFT gates for 2qbit system: H(0), CZ(0,1), H(1), SWAP
-    //     // fyi true QFT used controlled-phase(pi/2), but CZ is a valid proxy (still performs rotation around z)
-    //     let mut instructions = Vec::new();
-    //     instructions.push((Gate::H, 0, None));
-    //     instructions.push((Gate::CZ, 1, Some(0)));
-    //     instructions.push((Gate::H, 1, None));
-
-    //     let timeline = CircuitTimeline::generate(
-    //         n, 
-    //         instructions, 
-    //         &vec![PrimitiveState::Zero; n],
-    //         Some(noise)
-    //     );
-
-    //     println!("\n--- QFT 2-Qubit Noise Trace ---");
-    //     for (i, step) in timeline.steps.iter().enumerate() {
-    //         println!("Step {}: Fidelity = {:.4}", i, step.fidelity);
-    //     }
-
-    //     assert!(timeline.steps.last().unwrap().fidelity < 1.0);
-    // }
-
-    // #[test]
-    // fn test_timeline_4qbit_ghz() {
-    //     let n = 4;
-    //     // Use realistic noise parameters for a near-term device
-    //     let noise = NoiseModel {
-    //         t1: 150.0,
-    //         t2: 80.0,
-    //         p_depolarize: 0.003,
-    //         gate_time: 1.0,
-    //     };
-    //     let initial = vec![PrimitiveState::Zero; n];
-
-    //     let mut instructions = Vec::new();
-    //     // Step 1: Create superposition on the first qubit
-    //     instructions.push((Gate::H, 0, None));
+        println!("\n--- Refactored Timeline Accumulation Test ---");
         
-    //     // Step 2-4: Cascade CNOTs to entangle the whole chain
-    //     // Note: In our current enum, we'll use CNOT logic in the generate loop
-    //     instructions.push((Gate::X, 1, Some(0))); // CNOT(0,1)
-    //     instructions.push((Gate::X, 2, Some(1))); // CNOT(1,2)
-    //     instructions.push((Gate::X, 3, Some(2))); // CNOT(2,3)
-
-    //     let timeline = CircuitTimeline::generate(
-    //         n, 
-    //         instructions, 
-    //         &initial,
-    //         Some(noise)
-    //     );
-
-    //     println!("\n--- 4-Qubit GHZ State Decay ---");
-    //     for (i, step) in timeline.steps.iter().enumerate() {
-    //         println!("Step {}: Fidelity = {:.4}", i, step.fidelity);
-    //     }
-
-    //     let f_final = timeline.steps.last().unwrap().fidelity;
+        let f_start = timeline.steps[0].fidelity;
+        assert!((f_start - 1.0).abs() < 1e-6, "Initial state should have perfect fidelity");
         
-    //     // In a 4-qubit system with these errors, we expect a significant dip
-    //     assert!(f_final < 1.0, "Fidelity must decrease due to entanglement noise");
-    //     assert!(f_final > 0.8, "Fidelity should still be reasonably high for a short circuit");
-    // }
+        // Print the step-by-step collapse
+        for (i, step) in timeline.steps.iter().enumerate() {
+            println!("Step {} Fidelity: {:.6}", i, step.fidelity);
+        }
 
-    // #[test]
-    // fn test_timeline_6qbit_ghz() {
-    //     let n = 6;
-    //     let noise = NoiseModel {
-    //         t1: 150.0,
-    //         t2: 80.0,
-    //         p_depolarize: 0.003,
-    //         gate_time: 1.0,
-    //     }; 
-    //     let initial = vec![PrimitiveState::Zero; n];
+        let f_end = timeline.steps.last().unwrap().fidelity;
+        println!("End Fidelity after 3 gates: {:.6}", f_end);
 
-    //     let mut instructions = Vec::new();
-    //     // 1. Create superposition on the first qubit
-    //     instructions.push((Gate::H, 0, None));
+        assert!(f_end < f_start, "Total fidelity must decrease as gates accumulate");
+
+        // Rigorous Check: Ensure fidelity drops strictly at every single step
+        for i in 1..timeline.steps.len() {
+            assert!(
+                timeline.steps[i].fidelity < timeline.steps[i - 1].fidelity, 
+                "Fidelity failed to drop at step {}. Noise was not properly applied!", i
+            );
+        }
+    }
+
+    #[test]
+    fn test_timeline_2qbit_qft() {
+        let n = 2;
+        let noise = NoiseModel {
+            t1: 100.0, t2: 50.0,
+            p_depolarize: 0.005,
+            gate_time: 1.0,
+        };
+
+        // QFT gates for 2qbit system: H(0), CZ(0,1), H(1), SWAP
+        let mut instructions = Vec::new();
+        instructions.push((Gate::H, 0, None));
+        instructions.push((Gate::Z, 1, Some(0))); // Controlled-Z 
+        instructions.push((Gate::H, 1, None));
+        instructions.push((Gate::SWAP, 1, Some(0))); // Added the missing SWAP to complete the QFT
+
+        let initial_state = vec![PrimitiveState::Zero; n];
+
+        let timeline = CircuitTimeline::generate(
+            n, 
+            instructions, 
+            &initial_state,
+            Some(noise)
+        );
+
+        println!("\n--- Refactored QFT 2-Qubit Noise Trace ---");
         
-    //     // 2-6. Cascade CNOTs to entangle the whole chain
-    //     // Each X gate with a 'Some' control acts as a CNOT in your timeline logic
-    //     for i in 0..5 {
-    //         instructions.push((Gate::X, i + 1, Some(i))); 
-    //     }
+        let f_start = timeline.steps[0].fidelity;
+        assert!((f_start - 1.0).abs() < 1e-6, "Initial state should be perfectly 1.0");
 
-    //     let timeline = CircuitTimeline::generate(
-    //         n, 
-    //         instructions, 
-    //         &initial,
-    //         Some(noise)
-    //     );
+        for (i, step) in timeline.steps.iter().enumerate() {
+            println!("Step {}: Fidelity = {:.6}", i, step.fidelity);
+        }
 
-    //     println!("\n--- 6-Qubit GHZ Entanglement Decay ---");
-    //     for (i, step) in timeline.steps.iter().enumerate() {
-    //         println!("Step {}: Fidelity = {:.4}", i, step.fidelity);
-    //     }
-
-    //     let f_final = timeline.steps.last().unwrap().fidelity;
-    //     // With 6 qubits, the "Global Decoherence" will be very noticeable
-    //     assert!(f_final < 1.0);
-    // }
-
-    // #[test]
-    // fn test_timeline_8qbit_ghz() {
-    //     let n = 8;
-    //     let noise = NoiseModel {
-    //         t1: 150.0,
-    //         t2: 80.0,
-    //         p_depolarize: 0.003,
-    //         gate_time: 1.0,
-    //     };
-    //     let initial = vec![PrimitiveState::One; n];
-
-    //     let mut instructions = Vec::new();
-    //     // 1. Initial superposition
-    //     instructions.push((Gate::H, 0, None));
+        let f_final = timeline.steps.last().unwrap().fidelity;
         
-    //     // 2-8. Entanglement cascade
-    //     for i in 0..7 {
-    //         instructions.push((Gate::X, i + 1, Some(i))); 
-    //     }
+        // In a 2-qubit QFT with these specific error parameters, we expect a noticeable drop
+        assert!(f_final < 1.0, "Fidelity must decrease due to entanglement and swap noise");
+        assert!(f_final > 0.8, "Fidelity should still remain reasonably high for a 4-gate depth");
+        
+        // Ensure fidelity drops strictly at every single step
+        for i in 1..timeline.steps.len() {
+            assert!(
+                timeline.steps[i].fidelity < timeline.steps[i - 1].fidelity, 
+                "Fidelity failed to drop at step {}. Global decoherence/gate noise missed!", i
+            );
+        }
+    }
 
-    //     let timeline = CircuitTimeline::generate(
-    //         n, 
-    //         instructions, 
-    //         &initial,
-    //         Some(noise)
-    //     );
+    #[test]
+    fn test_timeline_4qbit_ghz() {
+        let n = 4;
+        // Use realistic noise parameters for a near-term device
+        let noise = NoiseModel {
+            t1: 150.0,
+            t2: 80.0,
+            p_depolarize: 0.003,
+            gate_time: 1.0,
+        };
+        let initial = vec![PrimitiveState::One; n];
 
-    //     println!("\n--- 8-Qubit GHZ Entanglement Decay ---");
-    //     for (step) in timeline.steps.iter() {
-    //         println!("Fidelity = {:.4}", step.fidelity);
-    //     }
-    // }
+        let mut instructions = Vec::new();
+        // Step 1: Create superposition on the first qubit
+        instructions.push((Gate::H, 0, None));
+        
+        // Step 2-4: Cascade CNOTs to entangle the whole chain
+        // In the refactored architecture, Gate::X with a control acts as CNOT
+        instructions.push((Gate::X, 1, Some(0))); // CNOT(0,1)
+        instructions.push((Gate::X, 2, Some(1))); // CNOT(1,2)
+        instructions.push((Gate::X, 3, Some(2))); // CNOT(2,3)
+
+        let timeline = CircuitTimeline::generate(
+            n, 
+            instructions, 
+            &initial,
+            Some(noise)
+        );
+
+        println!("\n--- Refactored 4-Qubit GHZ State Decay ---");
+        
+        // Verify initial noiseless state
+        let f_start = timeline.steps[0].fidelity;
+        assert!((f_start - 1.0).abs() < 1e-6, "Initial state fidelity should be perfectly 1.0");
+
+        for (i, step) in timeline.steps.iter().enumerate() {
+            println!("Step {}: Fidelity = {:.6}", i, step.fidelity);
+        }
+
+        let f_final = timeline.steps.last().unwrap().fidelity;
+        
+        assert!(f_final < 1.0, "Fidelity must decrease due to multi-qubit entanglement noise");
+        
+        assert!(f_final > 0.8, "Fidelity should still be reasonably high for a 4-gate depth");
+        
+        for i in 1..timeline.steps.len() {
+            assert!(
+                timeline.steps[i].fidelity < timeline.steps[i - 1].fidelity, 
+                "Fidelity failed to drop at step {}. Global decoherence missed!", i
+            );
+        }
+    }
+
+    #[test]
+    fn test_timeline_6qbit_ghz() {
+        let n = 6;
+        let noise = NoiseModel {
+            t1: 150.0,
+            t2: 80.0,
+            p_depolarize: 0.003,
+            gate_time: 1.0,
+        }; 
+        let initial = vec![PrimitiveState::One; n];
+
+        let mut instructions = Vec::new();
+        // 1. Create superposition on the first qubit
+        instructions.push((Gate::H, 0, None));
+        
+        // 2-6. Cascade CNOTs to entangle the whole chain
+        for i in 0..5 {
+            instructions.push((Gate::X, i + 1, Some(i))); 
+        }
+
+        let timeline = CircuitTimeline::generate(
+            n, 
+            instructions, 
+            &initial,
+            Some(noise)
+        );
+
+        println!("\n--- Refactored 6-Qubit GHZ Entanglement Decay ---");
+        
+        // Verify initial noiseless state
+        let f_start = timeline.steps[0].fidelity;
+        assert!((f_start - 1.0).abs() < 1e-6, "Initial state fidelity should be perfectly 1.0");
+
+        for (i, step) in timeline.steps.iter().enumerate() {
+            println!("Step {}: Fidelity = {:.6}", i, step.fidelity);
+        }
+
+        let f_final = timeline.steps.last().unwrap().fidelity;
+        
+        assert!(f_final < 1.0, "Fidelity must decrease due to multi-qubit entanglement noise");
+        
+        assert!(f_final > 0.70, "Fidelity should remain within expected bounds for a 6-gate depth");
+
+        for i in 1..timeline.steps.len() {
+            assert!(
+                timeline.steps[i].fidelity < timeline.steps[i - 1].fidelity, 
+                "Fidelity failed to drop at step {}. Global decoherence loop failed!", i
+            );
+        }
+    }
+
+    #[test]
+    fn test_timeline_8qbit_ghz() {
+        let n = 8;
+        let noise = NoiseModel {
+            t1: 150.0,
+            t2: 80.0,
+            p_depolarize: 0.003,
+            gate_time: 1.0,
+        };
+        
+        let initial = vec![PrimitiveState::One; n];
+
+        let mut instructions = Vec::new();
+        // 1. Initial superposition on qubit 0
+        instructions.push((Gate::H, 0, None));
+        
+        // 2-8. Entanglement cascade across the 8-qubit register
+        for i in 0..7 {
+            instructions.push((Gate::X, i + 1, Some(i))); 
+        }
+
+        let timeline = CircuitTimeline::generate(
+            n, 
+            instructions, 
+            &initial,
+            Some(noise)
+        );
+
+        println!("\n--- Refactored 8-Qubit GHZ Entanglement Decay ---");
+        
+        // Verify initial noiseless state
+        let f_start = timeline.steps[0].fidelity;
+        assert!((f_start - 1.0).abs() < 1e-6, "Initial state fidelity should be perfectly 1.0");
+
+        for (i, step) in timeline.steps.iter().enumerate() {
+            println!("Step {}: Fidelity = {:.6}", i, step.fidelity);
+        }
+
+        let f_final = timeline.steps.last().unwrap().fidelity;
+        
+        assert!(f_final < 1.0, "Fidelity must decrease due to multi-qubit entanglement noise");
+        
+        assert!(
+            f_final < 0.70 && f_final > 0.60, 
+            "Fidelity deviated from the expected ~0.66 benchmark for the |1> initialized 8-qubit system"
+        );
+
+        for i in 1..timeline.steps.len() {
+            assert!(
+                timeline.steps[i].fidelity < timeline.steps[i - 1].fidelity, 
+                "Fidelity failed to drop at step {}. Global decoherence loop missed the idle qubits!", i
+            );
+        }
+    }
 }

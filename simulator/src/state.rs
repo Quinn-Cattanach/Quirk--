@@ -147,7 +147,6 @@ impl State for Density {
     fn apply_single(&mut self, gate: Gate, q: usize) {
         let u = gate.matrix();
         let n = self.n_qbit();
-        let shape = vec![2; 2 * n];
         let mut new = Array::zeros(self.data.raw_dim());
 
         for (idx, &amp) in self.data.indexed_iter() {
@@ -248,36 +247,53 @@ impl State for Density {
     }
 
     fn apply_controlled(&mut self, gate: Gate, control: usize, target: usize, noise: Option<NoiseModel>) {
-        let u = gate.matrix(); // Get the 2x2 matrix for the gate
+        let u = gate.matrix(); 
         let n = self.n_qbit();
         let mut new_data = Array::zeros(self.data.raw_dim());
 
         for (idx, &amp) in self.data.indexed_iter() {
             if amp == ZERO_COMPLEX { continue; }
 
-            let mut next_idx = idx.as_array_view().to_vec();
-            
-            // Logic: If control qubit is |1>, apply rotation to target
-            if idx[control] == 1 && idx[control + n] == 1 {
-                let r = idx[target];
-                let c = idx[target + n];
+            let r_ctrl = idx[control];
+            let c_ctrl = idx[control + n];
+            let r_targ = idx[target];
+            let c_targ = idx[target + n];
 
-                for i in 0..2 {
-                    for j in 0..2 {
+            // Evaluate row and column application independently
+            let apply_row = r_ctrl == 1;
+            let apply_col = c_ctrl == 1;
+
+            for i in 0..2 {
+                for j in 0..2 {
+                    // Row action: U if control is 1, else Identity
+                    let row_factor = if apply_row { 
+                        u[[i, r_targ]] 
+                    } else { 
+                        if i == r_targ { crate::ONE_COMPLEX } else { ZERO_COMPLEX } 
+                    };
+                    
+                    // Column action: U_dag if control is 1, else Identity
+                    let col_factor = if apply_col { 
+                        u[[j, c_targ]].conj() 
+                    } else { 
+                        if j == c_targ { crate::ONE_COMPLEX } else { ZERO_COMPLEX } 
+                    };
+
+                    let factor = row_factor * col_factor;
+                    
+                    if factor != ZERO_COMPLEX {
+                        let mut next_idx = idx.as_array_view().to_vec();
                         next_idx[target] = i;
                         next_idx[target + n] = j;
-                        // Controlled-U: U * rho * U_dag
-                        new_data[IxDyn(&next_idx)] += u[[i, r]] * amp * u[[j, c]].conj();
+                        
+                        // Controlled-U: U * rho * U_dag (accounting for coherences)
+                        new_data[IxDyn(&next_idx)] += factor * amp;
                     }
                 }
-            } else {
-                // If control is |0>, state remains unchanged (Identity)
-                new_data[idx.clone()] += amp;
             }
         }
         self.data = new_data;
 
-        // Apply noise scaling
         if let Some(m) = noise {
             self.apply_gate_noise_and_decoherence(Some(control), target, m);
         }
