@@ -332,7 +332,7 @@ mod tests {
             p_depolarize: 0.003,
             gate_time: 1.0,
         };
-        let initial = vec![PrimitiveState::One; n];
+        let initial = vec![PrimitiveState::Zero; n];
 
         let mut instructions = Vec::new();
         // Step 1: Create superposition on the first qubit
@@ -372,7 +372,7 @@ mod tests {
             p_depolarize: 0.003,
             gate_time: 1.0,
         }; 
-        let initial = vec![PrimitiveState::One; n];
+        let initial = vec![PrimitiveState::Zero; n];
 
         let mut instructions = Vec::new();
         // 1. Create superposition on the first qubit

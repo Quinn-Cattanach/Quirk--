@@ -40,6 +40,7 @@ impl CircuitTimeline {
         for (gate, target, control) in instructions {
             match (gate, control) {
                 // Handle 2-Qubit Gates
+                // just have control gate generally and Z
                 (Gate::CZ, Some(ctrl)) => {
                     if let Some(ctrl) = control {
                         ideal_state.apply_cz(ctrl, target);

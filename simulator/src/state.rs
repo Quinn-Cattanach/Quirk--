@@ -110,6 +110,97 @@ impl State for Density {
         self.data = new;
     }
 
+    pub fn apply(&mut self, gate: Gate, target: usize, noise: Option<NoiseModel>) {
+        // Since Gate::SWAP is handled by a separate function, we 
+        // focus on the 2x2 unitaries for H, X, Y, and Z.
+        let u = gate.matrix();
+        let n = self.n_qbit();
+        let mut next_rho = Array::zeros(self.data.raw_dim());
+
+        for (idx, &amp) in self.data.indexed_iter() {
+            if amp == ZERO_COMPLEX { continue; }
+
+            let r = idx[target];
+            let c = idx[target + n];
+
+            for i in 0..2 {
+                for j in 0..2 {
+                    let mut next_idx = idx.as_array_view().to_vec();
+                    next_idx[target] = i;
+                    next_idx[target + n] = j;
+
+                    // Standard Unitary Update: rho' = U * rho * U_dag
+                    next_rho[IxDyn(&next_idx)] += u[[i, r]] * amp * u[[j, c]].conj();
+                }
+            }
+        }
+        self.data = next_rho;
+
+        // Apply noise scaling
+        if let Some(m) = noise {
+            self.apply_gate_noise_and_decoherence(None, target, m);
+        }
+    }
+
+    pub fn apply_swap(&mut self, q1: usize, q2: usize, noise: Option<NoiseModel>) {
+        let n = self.n_qbit();
+        let mut next_rho = Array::zeros(self.data.raw_dim());
+
+        for (idx, &amp) in self.data.indexed_iter() {
+            if amp == ZERO_COMPLEX { continue; }
+
+            let mut next_idx = idx.as_array_view().to_vec();
+            
+            // Physical SWAP: exchange the row and column indices
+            next_idx.swap(q1, q2);
+            next_idx.swap(q1 + n, q2 + n);
+
+            next_rho[IxDyn(&next_idx)] = amp;
+        }
+        self.data = next_rho;
+
+        // Apply noise scaling to both participating qubits
+        if let Some(m) = noise {
+            self.apply_gate_noise_and_decoherence(Some(q1), q2, m);
+        }
+    }
+
+    pub fn apply_controlled(&mut self, gate: Gate, control: usize, target: usize, noise: Option<NoiseModel>) {
+        let u = gate.matrix(); // Get the 2x2 matrix for the gate
+        let n = self.n_qbit();
+        let mut new_data = Array::zeros(self.data.raw_dim());
+
+        for (idx, &amp) in self.data.indexed_iter() {
+            if amp == ZERO_COMPLEX { continue; }
+
+            let mut next_idx = idx.as_array_view().to_vec();
+            
+            // Logic: If control qubit is |1>, apply rotation to target
+            if idx[control] == 1 && idx[control + n] == 1 {
+                let r = idx[target];
+                let c = idx[target + n];
+
+                for i in 0..2 {
+                    for j in 0..2 {
+                        next_idx[target] = i;
+                        next_idx[target + n] = j;
+                        // Controlled-U: U * rho * U_dag
+                        new_data[IxDyn(&next_idx)] += u[[i, r]] * amp * u[[j, c]].conj();
+                    }
+                }
+            } else {
+                // If control is |0>, state remains unchanged (Identity)
+                new_data[idx.clone()] += amp;
+            }
+        }
+        self.data = new_data;
+
+        // Apply noise scaling
+        if let Some(m) = noise {
+            self.apply_gate_noise_and_decoherence(Some(control), target, m);
+        }
+    }
+
     fn apply_cnot(&mut self, control: usize, target: usize) {
         let n = self.n_qbit();
         let shape = vec![2; 2 * n];
@@ -132,15 +223,27 @@ impl State for Density {
         self.data = new;
     }
 
-    fn apply_cz(&mut self, control: usize, target: usize) {
-        let n = self.n_qbit();
-        for (idx, amp) in self.data.indexed_iter_mut() {
-            let row_flip = idx[control] == 1 && idx[target] == 1;
-            let col_flip = idx[control + n] == 1 && idx[target + n] == 1;
+    fn apply_gate_noise_and_decoherence(&mut self, ctrl: Option<usize>, target: usize, m: NoiseModel) {
+        self.noise = Some(m);
+        self.apply_depolarizing_noise(target);
+        if let Some(c) = ctrl { self.apply_depolarizing_noise(c); }
 
-            if row_flip != col_flip {
-                *amp *= -1.0;
-            }
+        let n_total = self.n_qbit();
+        for i in 0..n_total {
+            self.apply_decoherence(i);
+            self.apply_phase_damping(i);
         }
     }
+
+    // fn apply_cz(&mut self, control: usize, target: usize) {
+    //     let n = self.n_qbit();
+    //     for (idx, amp) in self.data.indexed_iter_mut() {
+    //         let row_flip = idx[control] == 1 && idx[target] == 1;
+    //         let col_flip = idx[control + n] == 1 && idx[target + n] == 1;
+
+    //         if row_flip != col_flip {
+    //             *amp *= -1.0;
+    //         }
+    //     }
+    // }
 }

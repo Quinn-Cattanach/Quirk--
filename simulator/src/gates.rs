@@ -9,7 +9,7 @@ pub enum Gate {
     X,
     Y,
     Z,
-    CZ,
+    SWAP,
 }
 
 impl Gate {
@@ -28,8 +28,12 @@ impl Gate {
 
             Gate::Z => array![[ONE_COMPLEX, ZERO_COMPLEX], [ZERO_COMPLEX, -ONE_COMPLEX]],
 
-            // This function returns a 2x2 matrix but CZ is a 4x4 operation. For now, the phase-flip logic is in the State trait and below is identiy
-            Gate::CZ => array![[ONE_COMPLEX, ZERO_COMPLEX], [ZERO_COMPLEX, ONE_COMPLEX]],
+            Gate::SWAP => Array2::from_shape_vec((4, 4), vec![
+                ONE_COMPLEX, ZERO_COMPLEX, ZERO_COMPLEX, ZERO_COMPLEX,
+                ZERO_COMPLEX, ZERO_COMPLEX, ONE_COMPLEX, ZERO_COMPLEX,
+                ZERO_COMPLEX, ONE_COMPLEX, ZERO_COMPLEX, ZERO_COMPLEX,
+                ZERO_COMPLEX, ZERO_COMPLEX, ZERO_COMPLEX, ONE_COMPLEX,
+            ]).unwrap(),
         }
     }
 }
