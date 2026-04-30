@@ -1,22 +1,26 @@
 import {
     createContext,
-    useEffect,
+    useLayoutEffect,
     useRef,
     useState,
     type PropsWithChildren,
     type RefObject,
 } from "react";
-import { Toolbar, type ToolbarItem } from "./toolbar/toolbar-layout";
-import { Plus } from "lucide-react";
-import { GateToolbarItem } from "./gate/toolbar-item";
-import { CircuitComponent, primitiveGates } from "./gate/gate";
 import { EditorToolbar } from "./toolbar/editor-toolbar";
 import { InspectorToolbar } from "./toolbar/inspector-toolbar";
+import { CircuitComponent } from "./circuit-component/circuit-component";
 
 export type LayoutContext = {
     mobile: boolean;
     dragRef: RefObject<HTMLDivElement | null>;
     setDragging: (value: boolean) => void;
+    contentRect: RefObject<{
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+    }>;
+    draggingGate: RefObject<CircuitComponent | null>;
 };
 
 export const layoutContext = createContext<LayoutContext>(
@@ -26,45 +30,62 @@ export const layoutContext = createContext<LayoutContext>(
 export const Layout = ({ children }: PropsWithChildren) => {
     const pageRef = useRef<HTMLDivElement | null>(null);
     const dragRef = useRef<HTMLDivElement | null>(null);
+
     const [dragging, setDragging] = useState(false);
     const [mobile, setMobile] = useState(false);
 
-    const toolbarContainerRef = useRef<HTMLDivElement | null>(null);
     const contentContainerRef = useRef<HTMLDivElement | null>(null);
+    const titlebarRef = useRef<HTMLDivElement | null>(null);
 
-    useEffect(() => {
-        const onResize = () => {
-            if (pageRef.current) {
-                const { width } = pageRef.current.getBoundingClientRect();
+    const draggingGate = useRef<CircuitComponent | null>(null);
 
-                if (width < 768) {
-                    if (
-                        toolbarContainerRef.current &&
-                        contentContainerRef.current
-                    ) {
-                        toolbarContainerRef.current.style.order = "2";
-                        contentContainerRef.current.style.order = "1";
-                    }
-                    setMobile(true);
-                } else {
-                    if (
-                        toolbarContainerRef.current &&
-                        contentContainerRef.current
-                    ) {
-                        toolbarContainerRef.current.style.order = "1";
-                        contentContainerRef.current.style.order = "2";
-                    }
-                    setMobile(false);
-                }
-            }
+    const contentRect = useRef({
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 100,
+    });
+
+    // --- Mobile detection (stable, no flicker on reload) ---
+    useLayoutEffect(() => {
+        const computeMobile = () => {
+            const width = document.documentElement.clientWidth;
+            setMobile(width < 768);
         };
 
-        onResize();
+        computeMobile();
+        window.addEventListener("resize", computeMobile);
 
-        window.addEventListener("resize", onResize);
+        return () => window.removeEventListener("resize", computeMobile);
+    }, []);
+
+    useLayoutEffect(() => {
+        const el = contentContainerRef.current;
+        if (!el) return;
+
+        const update = () => {
+            const rect = el.getBoundingClientRect();
+            contentRect.current = {
+                x: rect.left,
+                y: rect.top,
+                width: rect.width,
+                height: rect.height,
+            };
+        };
+
+        update();
+
+        const ro = new ResizeObserver(() => {
+            requestAnimationFrame(update);
+        });
+
+        ro.observe(el);
+
+        window.addEventListener("resize", update);
 
         return () => {
-            window.removeEventListener("resize", onResize);
+            ro.disconnect();
+            window.removeEventListener("resize", update);
         };
     }, []);
 
@@ -75,67 +96,95 @@ export const Layout = ({ children }: PropsWithChildren) => {
     )`;
 
     return (
-        <layoutContext.Provider value={{ mobile, dragRef, setDragging }}>
-            <div ref={pageRef} className={`w-lvw h-lvh relative flex flex-col`}>
+        <layoutContext.Provider
+            value={{
+                mobile,
+                dragRef,
+                setDragging,
+                contentRect,
+                draggingGate,
+            }}
+        >
+            <div ref={pageRef} className="w-lvw h-lvh relative flex flex-col">
+                {/* Background */}
+                <div
+                    aria-hidden
+                    className="absolute inset-0 pointer-events-none z-0"
+                    style={{
+                        backgroundImage: 'url("/grid.svg")',
+                        backgroundRepeat: "repeat",
+                        backgroundSize: "37.5px 21.75px",
+                        backgroundBlendMode: "multiply",
+                        WebkitMaskImage: bgMask,
+                        maskImage: bgMask,
+                    }}
+                />
+
+                {/* Canvas layer (interactive, full screen) */}
+                <div className="absolute inset-0 z-10 pointer-events-auto">
+                    {children}
+                </div>
+
+                {/* Drag layer (top-most) */}
                 <div
                     ref={dragRef}
-                    className={`w-lvw h-lvh absolute top-0 left-0 z-10 ${dragging ? "" : "pointer-events-none"}`}
-                ></div>
-                <div className="h-18 w-full bg-white flex border-b border-b-neutral-200 z-5">
-                    <div className="my-auto mx-10 w-fit">quirk--</div>
-                </div>
-                <div
-                    className={`w-full h-full min-h-0 bg-neutral-100 flex ${
-                        mobile ? "flex-col" : "flex-row"
+                    className={`absolute inset-0 z-40 ${
+                        dragging ? "pointer-events-auto" : "pointer-events-none"
                     }`}
-                >
-                    {/* background */}
-                    <div
-                        aria-hidden
-                        className="absolute inset-0 pointer-events-none"
-                        style={{
-                            backgroundImage: 'url("/grid.svg")',
-                            backgroundRepeat: "repeat",
-                            backgroundSize: "37.5px 21.75px",
-                            backgroundBlendMode: "multiply",
-                            WebkitMaskImage: bgMask,
-                            maskImage: bgMask,
-                        }}
-                    />
+                />
 
+                {/* UI layer */}
+                <div className="relative z-30 h-full pointer-events-none flex flex-col">
+                    {/* Titlebar */}
                     <div
-                        className={`z-1 ${
-                            mobile ? "hidden" : "flex-1 max-w-80"
+                        ref={titlebarRef}
+                        className="h-18 w-full bg-white flex border-b border-b-neutral-200 pointer-events-auto"
+                    >
+                        <div className="my-auto mx-10 w-fit">quirk--</div>
+                    </div>
+
+                    {/* Main layout */}
+                    <div
+                        className={`relative w-full h-full min-h-0 flex ${
+                            mobile ? "flex-col" : "flex-row"
                         }`}
                     >
-                        <EditorToolbar />
-                    </div>
-
-                    <div
-                        ref={contentContainerRef}
-                        className={`z-1 ${mobile ? "flex-1" : "flex-2"}`}
-                    >
-                        {children}
-                    </div>
-
-                    <div
-                        className={`z-1 ${
-                            mobile ? "hidden" : "flex-1 max-w-80"
-                        }`}
-                    >
-                        <InspectorToolbar />
-                    </div>
-
-                    {mobile && (
-                        <div className="z-1 flex flex-row w-full  mt-auto max-h-96">
-                            <div className="flex-1">
-                                <EditorToolbar />
-                            </div>
-                            <div className="flex-1">
-                                <InspectorToolbar />
-                            </div>
+                        {/* Left toolbar */}
+                        <div
+                            className={`${
+                                mobile ? "hidden" : "flex-1 max-w-80"
+                            } pointer-events-auto`}
+                        >
+                            <EditorToolbar />
                         </div>
-                    )}
+
+                        {/* Center content anchor (measurement only) */}
+                        <div
+                            ref={contentContainerRef}
+                            className={`${mobile ? "flex-1" : "flex-[2]"}`}
+                        />
+
+                        {/* Right toolbar */}
+                        <div
+                            className={`${
+                                mobile ? "hidden" : "flex-1 max-w-80"
+                            } pointer-events-auto`}
+                        >
+                            <InspectorToolbar />
+                        </div>
+
+                        {/* Mobile bottom bar */}
+                        {mobile && (
+                            <div className="flex flex-row w-full mt-auto max-h-96 pointer-events-auto">
+                                <div className="flex-1">
+                                    <EditorToolbar />
+                                </div>
+                                <div className="flex-1">
+                                    <InspectorToolbar />
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
         </layoutContext.Provider>

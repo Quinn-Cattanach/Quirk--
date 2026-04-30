@@ -1,5 +1,5 @@
 import { useContext, useEffect, useRef, useState } from "react";
-import { CircuitComponent } from "./gate";
+import { CircuitComponent } from "./circuit-component";
 import { SHADOW_STYLE } from "../styles";
 import { layoutContext } from "../layout";
 import { createPortal } from "react-dom";
@@ -24,11 +24,14 @@ function cloneCanvas(source: HTMLCanvasElement) {
 export const GateToolbarItem = ({ gate }: { gate: CircuitComponent }) => {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-    const { dragRef, setDragging } = useContext(layoutContext);
+    const { dragRef, setDragging, draggingGate } = useContext(layoutContext);
 
     const needsDisplay = () => {
         const canvas = canvasRef.current;
-        if (!canvas || !gate.svg || !gate.bitmap) return;
+        if (!canvas) return;
+
+        // Only require assets if it's a gate; controls draw themselves via Canvas API
+        if (gate.type === "gate" && (!gate.svg || !gate.bitmap)) return;
 
         const ctx = canvas.getContext("2d");
         if (!ctx) return;
@@ -38,14 +41,10 @@ export const GateToolbarItem = ({ gate }: { gate: CircuitComponent }) => {
         canvas.width = gate.width;
         canvas.height = gate.height;
 
-        console.log(`w: ${gate.width}, h: ${gate.height}`);
-
         canvas.style.width = `${gate.width / dpr}px`;
         canvas.style.height = `${gate.height / dpr}px`;
 
         gate.draw(ctx);
-
-        console.log(canvas.style.width);
     };
 
     useEffect(() => {
@@ -57,9 +56,10 @@ export const GateToolbarItem = ({ gate }: { gate: CircuitComponent }) => {
     const [position, setPosition] = useState({ x: 0, y: 0 });
 
     return (
-        <div className="w-full flex items-center overflow-visible">
+        <div className="w-full flex items-center overflow-visible py-1">
             <p className="font-medium text-sm">{gate.label}</p>
             <div
+                className="ml-auto cursor-grab shrink-0"
                 onMouseDown={(e) => {
                     if (!canvasRef.current) return;
 
@@ -83,11 +83,14 @@ export const GateToolbarItem = ({ gate }: { gate: CircuitComponent }) => {
                         setShowPortal(false);
                         setDragging(false);
 
+                        draggingGate.current = null;
+
                         window.removeEventListener("mouseup", hidePortal);
                         window.removeEventListener("mousemove", follow);
                     };
 
                     setDragging(true);
+                    draggingGate.current = gate;
 
                     window.addEventListener("mouseup", hidePortal);
                     window.addEventListener("mousemove", follow);
@@ -95,7 +98,6 @@ export const GateToolbarItem = ({ gate }: { gate: CircuitComponent }) => {
                 onMouseUp={() => {
                     setShowPortal(false);
                 }}
-                className={`ml-auto cursor-grab`}
             >
                 {showPortal &&
                     dragRef.current &&
@@ -126,7 +128,10 @@ export const GateToolbarItem = ({ gate }: { gate: CircuitComponent }) => {
                         />,
                         dragRef.current,
                     )}
-                <canvas ref={canvasRef}></canvas>
+                <canvas
+                    ref={canvasRef}
+                    className="block overflow-visible"
+                ></canvas>
             </div>
         </div>
     );

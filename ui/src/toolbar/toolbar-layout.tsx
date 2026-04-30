@@ -61,7 +61,7 @@ const Item = ({ item, path }: { item: ToolbarItem; path?: string }) => {
             return (
                 <div className="w-full flex flex-col gap-2 relative">
                     <button
-                        className="cursor-pointer flex items-center rounded-sm hover:bg-neutral-100 duration-100 py-2 px-2 z-2"
+                        className="cursor-pointer flex items-center rounded-sm hover:bg-black/5 duration-100 py-2 px-2 z-2"
                         onClick={() => setCollapsed((p) => !p)}
                     >
                         <div className="font-semibold text-md truncate">
@@ -75,7 +75,7 @@ const Item = ({ item, path }: { item: ToolbarItem; path?: string }) => {
                     </button>
 
                     <div
-                        className={`overflow-hidden transition-all duration-100 bg-neutral-100 rounded-md ${
+                        className={`overflow-hidden transition-all duration-100 bg-black/5 rounded-md ${
                             collapsed
                                 ? "max-h-0 opacity-0 -translate-y-5"
                                 : "max-h-96 opacity-100"
@@ -109,7 +109,7 @@ export const Toolbar = ({
 }) => {
     return (
         <div className="w-full h-full p-4">
-            <div className="w-full h-full rounded-xl backdrop-blur-md bg-white/50 border border-neutral-200 flex flex-col gap-2">
+            <div className="w-full h-full rounded-xl backdrop-blur-md bg-white/70 border border-neutral-200 flex flex-col gap-2">
                 <div className="font-semibold text-lg px-4 pt-3 pb-1">
                     {title}
                 </div>

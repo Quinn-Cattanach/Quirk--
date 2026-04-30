@@ -1,6 +1,5 @@
 import { getSvgString, svgToImageBitmap, type SVG } from "../MathJax";
 import { err, ok, type Result } from "../result";
-
 export type PrimitiveGate = "hadamard" | "pauli-x" | "pauli-y" | "pauli-z";
 export const primitiveGates: PrimitiveGate[] = [
     "hadamard",
@@ -16,26 +15,27 @@ export class CircuitComponent {
         "pauli-y": "Pauli Y",
         "pauli-z": "Pauli Z",
     };
-
     private static primitiveGateLatex: Record<PrimitiveGate, string> = {
         hadamard: "\\text{H}",
         "pauli-x": "\\text{X}",
         "pauli-y": "\\text{Y}",
         "pauli-z": "\\text{Z}",
     };
-
-    private static paddingUnscaled: number = 5; // need dpr scaling.
-    private static strokeWidthUnscaled: number = 2; // need dpr scaling.
+    private static paddingUnscaled = 5;
+    private static strokeWidthUnscaled = 1.5;
+    private static controlSizeUnscaled = 20;
+    private static controlRadiusUnscaled = 6;
 
     #needsDisplay: null | (() => void);
     set needsDisplay(newCallback: () => void) {
         this.#needsDisplay = newCallback;
     }
 
-    type: "gate";
+    type: "gate" | "control" | "not-control";
     label: string;
 
     private rerender() {
+        if (this.type === "control") return; // no SVG/bitmap needed
         getSvgString(this.#latexString).then((svg) => {
             this.#svg = svg;
             svgToImageBitmap(svg, 24).then((bitmap) => {
@@ -45,8 +45,7 @@ export class CircuitComponent {
         });
     }
 
-    #widthOverride: number = 0;
-
+    #widthOverride = 0;
     #latexString: string;
     set latexString(newValue: string) {
         this.#latexString = newValue;
@@ -57,13 +56,15 @@ export class CircuitComponent {
     get svg(): SVG | null {
         return this.#svg;
     }
-
     #bitmap: HTMLCanvasElement | null;
     get bitmap(): HTMLCanvasElement | null {
         return this.#bitmap;
     }
 
     get width(): number {
+        if (this.type === "control" || this.type === "not-control") {
+            return CircuitComponent.controlSizeUnscaled * devicePixelRatio;
+        }
         return (
             (this.#widthOverride
                 ? this.#widthOverride
@@ -71,8 +72,10 @@ export class CircuitComponent {
             2 * CircuitComponent.paddingUnscaled * devicePixelRatio
         );
     }
-
     get height(): number {
+        if (this.type === "control" || this.type === "not-control") {
+            return CircuitComponent.controlSizeUnscaled * devicePixelRatio;
+        }
         return (
             (this.#bitmap?.height ?? 20.0) +
             2 * CircuitComponent.paddingUnscaled * devicePixelRatio
@@ -82,13 +85,45 @@ export class CircuitComponent {
     draw(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D) {
         const [w, h] = [this.width, this.height];
         ctx.save();
+
+        if (this.type === "control" || this.type === "not-control") {
+            const radius =
+                CircuitComponent.controlRadiusUnscaled * devicePixelRatio;
+            const stroke =
+                CircuitComponent.strokeWidthUnscaled * devicePixelRatio;
+
+            ctx.beginPath();
+            ctx.arc(w / 2, h / 2, radius, 0, Math.PI * 2);
+
+            if (this.type === "control") {
+                ctx.fillStyle = "#000000";
+                ctx.fill();
+            } else {
+                // Not Control: White fill with black outline
+                ctx.fillStyle = "#FFFFFF";
+                ctx.strokeStyle = "#000000";
+                ctx.lineWidth = stroke;
+                ctx.fill();
+                ctx.stroke();
+            }
+
+            ctx.restore();
+            return;
+        }
+
+        const stroke = CircuitComponent.strokeWidthUnscaled * devicePixelRatio;
+        const halfStroke = stroke / 2;
+
         ctx.clearRect(0, 0, w, h);
 
         ctx.beginPath();
-        ctx.rect(0, 0, w, h);
+        // inset so stroke stays fully inside canvas (prevents clipping)
+        ctx.rect(halfStroke, halfStroke, w - stroke, h - stroke);
+
         ctx.strokeStyle = "#000000";
         ctx.fillStyle = "#FFFFFF";
-        ctx.lineWidth = CircuitComponent.strokeWidthUnscaled * devicePixelRatio;
+        ctx.lineWidth = stroke;
+
         ctx.fill();
         ctx.stroke();
 
@@ -103,22 +138,26 @@ export class CircuitComponent {
 
         ctx.translate(tx, ty);
 
-        if (this.bitmap) ctx.drawImage(this.bitmap, 0, 0);
-        else {
+        if (this.bitmap) {
+            ctx.drawImage(this.bitmap, 0, 0);
+        } else {
             ctx.font = `${24 * devicePixelRatio}px sans-serif`;
             ctx.fillText("?", 0, 22 * devicePixelRatio);
         }
+
         ctx.restore();
     }
 
     private constructor({
         label,
         latexString,
+        type = "gate",
     }: {
         label: string;
         latexString: string;
+        type?: "gate" | "control";
     }) {
-        this.type = "gate";
+        this.type = type;
         this.label = label;
         this.#svg = null;
         this.#bitmap = null;
@@ -129,7 +168,11 @@ export class CircuitComponent {
 
     static createSingleQbit(): Result<CircuitComponent, string> {
         return err("The gate must be a unitary operator.");
-        // return ok(new Gate());
+    }
+
+    #primitive: PrimitiveGate | null = null;
+    get primitive(): PrimitiveGate | null {
+        return this.#primitive;
     }
 
     static fromPrimitive(primitive: PrimitiveGate): CircuitComponent {
@@ -137,9 +180,24 @@ export class CircuitComponent {
             label: CircuitComponent.primitiveGateLabel[primitive],
             latexString: CircuitComponent.primitiveGateLatex[primitive],
         });
-
         gate.#widthOverride = 60;
-
+        gate.#primitive = primitive;
         return gate;
+    }
+
+    static createControl(): CircuitComponent {
+        return new CircuitComponent({
+            label: "Control",
+            latexString: "",
+            type: "control",
+        });
+    }
+
+    static createNotControl(): CircuitComponent {
+        return new CircuitComponent({
+            label: "Not Control",
+            latexString: "",
+            type: "not-control",
+        });
     }
 }

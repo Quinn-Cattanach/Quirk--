@@ -1,6 +1,9 @@
 import { Plus } from "lucide-react";
-import { CircuitComponent, primitiveGates } from "../gate/gate";
-import { GateToolbarItem } from "../gate/toolbar-item";
+import {
+    CircuitComponent,
+    primitiveGates,
+} from "../circuit-component/circuit-component";
+import { GateToolbarItem } from "../circuit-component/toolbar-item";
 import { Toolbar, type ToolbarItem } from "./toolbar-layout";
 
 export const InspectorToolbar = () => {
