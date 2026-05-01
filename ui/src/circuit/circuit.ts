@@ -436,6 +436,7 @@ export class Circuit {
     }
 
     removeColumnIfEmpty(col: number) {
+        if (this.numColumns <= 1) return;
         if (this.isColumnEmpty(col)) {
             this.removeColumn(col);
         }
