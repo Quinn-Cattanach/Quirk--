@@ -7,6 +7,7 @@ import {
     type PrimitiveGate,
 } from "../circuit-component/circuit-component";
 import { SHADOW_STYLE } from "../styles";
+import { useCircuit } from "../circuit";
 
 const VIEWPORT_PADDING = 16;
 const DRAG_THRESHOLD_PX = 4;
@@ -25,40 +26,7 @@ export const CircuitElement = () => {
         useContext(layoutContext);
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-    const [circuit] = useState(() => {
-        const ROWS = 3;
-        const c = new Circuit(ROWS);
-
-        const pattern: PrimitiveGate[] = [
-            "hadamard",
-            "pauli-x",
-            "pauli-y",
-            "pauli-z",
-        ];
-
-        const N = 10;
-
-        for (let j = 0; j < N; j += 1) {
-            const gate = pattern[j % pattern.length];
-            const r1 = j % ROWS;
-            const r2 = (j + 1) % ROWS;
-
-            if (j % 3 === 2) {
-                c.setComponent(r1, j, null);
-                c.setComponent(r2, j, null);
-            } else if (j % 2 === 0) {
-                c.setComponent(r1, j, CircuitComponent.fromPrimitive(gate));
-                c.setComponent(r2, j, CircuitComponent.createControl());
-            } else {
-                c.setComponent(r1, j, CircuitComponent.createNotControl());
-                c.setComponent(r2, j, CircuitComponent.fromPrimitive(gate));
-            }
-        }
-
-        c.setStartingState(1, "-");
-
-        return c;
-    });
+    const { circuit } = useCircuit();
 
     const scrollRef = useRef({ x: 0, y: 0 });
     const renderRef = useRef<() => void>(() => {});

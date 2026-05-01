@@ -1,9 +1,21 @@
 import { CircuitComponent } from "../circuit-component/circuit-component";
+import type { NoiseModel } from "../simulator/bindings/NoiseModel";
+import type { SimulationStage } from "../simulator/bindings/SimulationStage";
+import { simulate_circuit } from "../simulator/pkg/quirkmm_simulator";
+import { buildSimulatorCircuit } from "./circuit-to-simulator";
+
+export type SimulationResult = {
+    stages: SimulationStage[];
+    /** stages[i+1] corresponds to UI column columnMap[i], or -1 for synthetic. */
+    columnMap: number[];
+};
 
 // Adjust this import to wherever you keep the mathjax helpers.
 import { getSvgString, svgToImageBitmap } from "../mathjax";
 
 export type KetType = "0" | "1" | "+" | "-" | "+i" | "-i";
+
+export const STARTING_STATES: KetType[] = ["0", "1", "+", "-", "+i", "-i"];
 
 const KET_TEX: Record<KetType, string> = {
     "0": "|0\\rangle",
@@ -13,6 +25,14 @@ const KET_TEX: Record<KetType, string> = {
     "+i": "|i\\rangle",
     "-i": "|{-}i\\rangle",
 };
+
+function stageIndexAtUiColumn(columnMap: number[], c: number): number {
+    let lastIdx = -1;
+    for (let i = 0; i < columnMap.length; i++) {
+        if (columnMap[i] >= 0 && columnMap[i] < c) lastIdx = i;
+    }
+    return lastIdx + 1;
+}
 
 // Module-level cache shared across all Circuit instances.
 const ketCache = new Map<string, HTMLCanvasElement>();
@@ -117,6 +137,120 @@ export class Circuit {
         return this.#components[0]?.length ?? 0;
     }
 
+    #noiseModel: NoiseModel | null = null;
+    #onSimulation: ((result: SimulationResult) => void) | null = null;
+    #latestResult: SimulationResult | null = null;
+
+    get noiseModel(): NoiseModel | null {
+        return this.#noiseModel;
+    }
+    set noiseModel(noise: NoiseModel | null) {
+        this.#noiseModel = noise;
+        this.#fireDidChange();
+    }
+
+    set onSimulation(cb: (result: SimulationResult) => void) {
+        this.#onSimulation = cb;
+        this.#scheduleSimulation();
+    }
+
+    get latestSimulation(): SimulationResult | null {
+        return this.#latestResult;
+    }
+
+    simulate(): SimulationResult | null {
+        try {
+            const { circuit, initialState, columnMap } = buildSimulatorCircuit(
+                this.#components,
+                this.#startingStates,
+            );
+            const stages = simulate_circuit(
+                circuit,
+                initialState,
+                this.#noiseModel,
+            ) as SimulationStage[];
+            return { stages, columnMap };
+        } catch (e) {
+            console.warn("Simulation failed:", e);
+            return null;
+        }
+    }
+
+    #simScheduled = false;
+
+    #hasBlochInspectors(): boolean {
+        for (const row of this.#components) {
+            for (const c of row) {
+                if (c?.type === "bloch-inspector") return true;
+            }
+        }
+        return false;
+    }
+
+    #updateBlochInspectors(result: SimulationResult) {
+        for (let col = 0; col < this.numColumns; col++) {
+            for (let row = 0; row < this.numQbit; row++) {
+                const c = this.#components[row][col];
+                if (c?.type !== "bloch-inspector") continue;
+                const idx = stageIndexAtUiColumn(result.columnMap, col);
+                const stage = result.stages[idx];
+                const info = stage?.clean.qubits[row] ?? null;
+                console.log(
+                    `inspector @ (row=${row}, col=${col}) → stage[${idx}], ` +
+                        `q${row}: ${info ? `sep=${info.is_separable}, bloch=${info.bloch_vector}` : "null"}`,
+                );
+                c.setQubitInfo(info);
+            }
+        }
+    }
+
+    #clearBlochInspectors() {
+        for (const row of this.#components) {
+            for (const c of row) {
+                if (c?.type === "bloch-inspector") c.setQubitInfo(null);
+            }
+        }
+    }
+
+    #scheduleSimulation() {
+        if (!this.#onSimulation && !this.#hasBlochInspectors()) return;
+        if (this.#simScheduled) return;
+        this.#simScheduled = true;
+        queueMicrotask(() => {
+            this.#simScheduled = false;
+            const hasInspectors = this.#hasBlochInspectors();
+            if (!this.#onSimulation && !hasInspectors) return;
+
+            console.group("[sim]");
+            console.log(
+                "components grid:",
+                this.#components.map((row) =>
+                    row.map((c) => c?.type ?? "null"),
+                ),
+            );
+
+            const result = this.simulate();
+            this.#latestResult = result;
+
+            if (result) {
+                console.log("columnMap:", result.columnMap);
+                console.log("stages:", result.stages.length, "total");
+                if (hasInspectors) this.#updateBlochInspectors(result);
+                this.#onSimulation?.(result);
+            } else if (hasInspectors) {
+                console.warn("simulate() returned null — clearing inspectors");
+                this.#clearBlochInspectors();
+            }
+            console.groupEnd();
+            this.#needsDisplay?.();
+        });
+    }
+
+    #fireDidChange() {
+        this.#needsDisplay?.();
+        this.#scheduleSimulation();
+    }
+
     /** Options scaled to physical pixels. */
     private get s() {
         const dpr = devicePixelRatio;
@@ -141,7 +275,7 @@ export class Circuit {
         if (row < 0 || row >= this.numQbit) return;
         this.#startingStates[row] = ket;
         this.#ensureKetLoaded(ket);
-        this.#needsDisplay?.();
+        this.#fireDidChange();
     }
 
     getStartingState(row: number): KetType {
@@ -158,14 +292,14 @@ export class Circuit {
         this.#components.push(Array(this.numColumns).fill(null));
         this.#startingStates.push("0");
         this.#ensureKetLoaded("0");
-        this.#needsDisplay?.();
+        this.#fireDidChange();
     }
 
     removeQbit(index: number) {
         if (index < this.numQbit) {
             this.#components.splice(index, 1);
             this.#startingStates.splice(index, 1);
-            this.#needsDisplay?.();
+            this.#fireDidChange();
         }
     }
 
@@ -176,7 +310,7 @@ export class Circuit {
         }
         this.#components[row][col] = c;
         if (c && this.#needsDisplay) c.needsDisplay = this.#needsDisplay;
-        this.#needsDisplay?.();
+        this.#fireDidChange();
     }
 
     widthOfColumn(index: number): number {
@@ -202,7 +336,7 @@ export class Circuit {
         if (col < 0 || col >= this.numColumns) return;
 
         this.#components[row][col] = null;
-        this.#needsDisplay?.();
+        this.#fireDidChange();
 
         this.removeColumnIfEmpty(col);
     }
@@ -220,7 +354,7 @@ export class Circuit {
         for (const row of this.#components) {
             row.splice(col, 1);
         }
-        this.#needsDisplay?.();
+        this.#fireDidChange();
     }
 
     removeColumnIfEmpty(col: number) {
@@ -346,7 +480,7 @@ export class Circuit {
         for (const r of this.#components) {
             r.splice(col, 0, null);
         }
-        this.#needsDisplay?.();
+        this.#fireDidChange();
     }
 
     /**
@@ -368,7 +502,12 @@ export class Circuit {
         if (this.#components[target.row][target.col] != null) return;
         this.#components[target.row][target.col] = component;
         if (this.#needsDisplay) component.needsDisplay = this.#needsDisplay;
-        this.#needsDisplay?.();
+        this.#fireDidChange();
+
+        this.#components[target.row][target.col] = component;
+        if (component.type === "bloch-inspector") {
+            component.setQubitInfo(null);
+        }
     }
 
     /**

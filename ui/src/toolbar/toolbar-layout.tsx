@@ -24,10 +24,47 @@ export type ToolbarItem =
           label: string;
           onClick?: (e: MouseEvent) => void;
           icon?: React.ReactNode;
+      }
+    | {
+          type: "input";
+          label: string;
+          initialValue: string;
+          unit?: string;
+          onChange: (newValue: string) => boolean;
       };
 
 const Item = ({ item, path }: { item: ToolbarItem; path?: string }) => {
     switch (item.type) {
+        case "input": {
+            const [valid, setValid] = useState(
+                item.onChange(item.initialValue),
+            );
+
+            return (
+                <div className="w-full flex items-center overflow-visible py-1">
+                    <p className="font-medium text-sm">{item.label}</p>
+                    <div
+                        className={`flex ml-auto border border-neutral-300 rounded-sm bg-white
+                      focus-within:outline focus-within:outline-2 focus-within:outline-blue-200
+                      ${!valid ? "outline-4 outline-red-400" : ""}`}
+                    >
+                        <input
+                            className={`p-2 w-12 h-8 text-center bg-transparent outline-none
+                        ${item.unit ? "rounded-l-sm" : "rounded-sm"}`}
+                            onChange={(e) => {
+                                setValid(item.onChange(e.target.value));
+                            }}
+                            defaultValue={item.initialValue}
+                        />
+                        {item.unit && (
+                            <div className="rounded-r-sm border-l border-neutral-300 w-12 h-8 flex items-center">
+                                <p className="m-auto">{item.unit}</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
         case "button": {
             return (
                 <button

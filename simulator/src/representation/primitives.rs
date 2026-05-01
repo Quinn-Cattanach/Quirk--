@@ -1,6 +1,8 @@
 use num_complex::Complex32;
+use serde::{Deserialize, Serialize};
 
-#[derive(Copy, Clone, Debug)]
+#[derive(ts_rs::TS, Copy, Clone, Debug, Serialize, Deserialize)]
+#[ts(export)]
 pub enum PrimitiveState {
     Zero,
     One,

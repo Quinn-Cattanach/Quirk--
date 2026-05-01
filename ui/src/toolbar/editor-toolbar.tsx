@@ -28,12 +28,6 @@ export const EditorToolbar = () => {
                                 ),
                             };
                         }),
-                        { type: "divider" },
-                        {
-                            type: "button",
-                            label: "Create new gate",
-                            icon: <Plus className="size-4" />,
-                        },
                     ],
                 },
                 {
@@ -50,12 +44,6 @@ export const EditorToolbar = () => {
                                 element: <GateToolbarItem gate={gate} />,
                             };
                         }),
-                        { type: "divider" },
-                        {
-                            type: "button",
-                            label: "Create new gate",
-                            icon: <Plus className="size-4" />,
-                        },
                     ],
                 },
                 {
@@ -75,12 +63,6 @@ export const EditorToolbar = () => {
                                 ),
                             };
                         }),
-                        { type: "divider" },
-                        {
-                            type: "button",
-                            label: "Create new gate",
-                            icon: <Plus className="size-4" />,
-                        },
                     ],
                 },
             ]}

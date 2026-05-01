@@ -6,28 +6,52 @@ use crate::{I_COMPLEX, ONE_COMPLEX, SQRT2_INV_COMPLEX, ZERO_COMPLEX};
 
 #[derive(ts_rs::TS, Clone, Copy, Debug, Serialize, Deserialize)]
 #[ts(export)]
-pub enum SingleQbitGate {
+pub enum Gate {
     H,
     X,
     Y,
     Z,
+    SWAP,
 }
 
-impl SingleQbitGate {
+impl Gate {
     pub fn matrix(self) -> Array2<Complex32> {
         match self {
-            SingleQbitGate::H => {
+            Gate::H => {
                 array![
                     [SQRT2_INV_COMPLEX, SQRT2_INV_COMPLEX],
                     [SQRT2_INV_COMPLEX, -SQRT2_INV_COMPLEX]
                 ]
             }
 
-            SingleQbitGate::X => array![[ZERO_COMPLEX, ONE_COMPLEX], [ONE_COMPLEX, ZERO_COMPLEX]],
+            Gate::X => array![[ZERO_COMPLEX, ONE_COMPLEX], [ONE_COMPLEX, ZERO_COMPLEX]],
 
-            SingleQbitGate::Y => array![[ZERO_COMPLEX, -I_COMPLEX], [I_COMPLEX, ZERO_COMPLEX]],
+            Gate::Y => array![[ZERO_COMPLEX, -I_COMPLEX], [I_COMPLEX, ZERO_COMPLEX]],
 
-            SingleQbitGate::Z => array![[ONE_COMPLEX, ZERO_COMPLEX], [ZERO_COMPLEX, -ONE_COMPLEX]],
+            Gate::Z => array![[ONE_COMPLEX, ZERO_COMPLEX], [ZERO_COMPLEX, -ONE_COMPLEX]],
+
+            Gate::SWAP => Array2::from_shape_vec(
+                (4, 4),
+                vec![
+                    ONE_COMPLEX,
+                    ZERO_COMPLEX,
+                    ZERO_COMPLEX,
+                    ZERO_COMPLEX,
+                    ZERO_COMPLEX,
+                    ZERO_COMPLEX,
+                    ONE_COMPLEX,
+                    ZERO_COMPLEX,
+                    ZERO_COMPLEX,
+                    ONE_COMPLEX,
+                    ZERO_COMPLEX,
+                    ZERO_COMPLEX,
+                    ZERO_COMPLEX,
+                    ZERO_COMPLEX,
+                    ZERO_COMPLEX,
+                    ONE_COMPLEX,
+                ],
+            )
+            .unwrap(),
         }
     }
 }

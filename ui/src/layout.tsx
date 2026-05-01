@@ -9,6 +9,7 @@ import {
 import { EditorToolbar } from "./toolbar/editor-toolbar";
 import { InspectorToolbar } from "./toolbar/inspector-toolbar";
 import { CircuitComponent } from "./circuit-component/circuit-component";
+import { CircuitProvider } from "./circuit";
 
 export type LayoutContext = {
     mobile: boolean;
@@ -96,97 +97,107 @@ export const Layout = ({ children }: PropsWithChildren) => {
     )`;
 
     return (
-        <layoutContext.Provider
-            value={{
-                mobile,
-                dragRef,
-                setDragging,
-                contentRect,
-                draggingGate,
-            }}
-        >
-            <div ref={pageRef} className="w-lvw h-lvh relative flex flex-col">
-                {/* Background */}
+        <CircuitProvider>
+            <layoutContext.Provider
+                value={{
+                    mobile,
+                    dragRef,
+                    setDragging,
+                    contentRect,
+                    draggingGate,
+                }}
+            >
                 <div
-                    aria-hidden
-                    className="absolute inset-0 pointer-events-none z-0"
-                    style={{
-                        backgroundImage: 'url("/grid.svg")',
-                        backgroundRepeat: "repeat",
-                        backgroundSize: "37.5px 21.75px",
-                        backgroundBlendMode: "multiply",
-                        WebkitMaskImage: bgMask,
-                        maskImage: bgMask,
-                    }}
-                />
-
-                {/* Canvas layer (interactive, full screen) */}
-                <div className="absolute inset-0 z-10 pointer-events-auto">
-                    {children}
-                </div>
-
-                {/* Drag layer (top-most) */}
-                <div
-                    ref={dragRef}
-                    className={`absolute inset-0 z-40 ${
-                        dragging ? "pointer-events-auto" : "pointer-events-none"
-                    }`}
-                />
-
-                {/* UI layer */}
-                <div className="relative z-30 h-full pointer-events-none flex flex-col">
-                    {/* Titlebar */}
+                    ref={pageRef}
+                    className="w-lvw h-lvh relative flex flex-col"
+                >
+                    {/* Background */}
                     <div
-                        ref={titlebarRef}
-                        className="h-18 w-full bg-white flex border-b border-b-neutral-200 pointer-events-auto"
-                    >
-                        <div className="my-auto mx-10 w-fit">quirk--</div>
+                        aria-hidden
+                        className="absolute inset-0 pointer-events-none z-0"
+                        style={{
+                            backgroundImage: 'url("/grid.svg")',
+                            backgroundRepeat: "repeat",
+                            backgroundSize: "37.5px 21.75px",
+                            backgroundBlendMode: "multiply",
+                            WebkitMaskImage: bgMask,
+                            maskImage: bgMask,
+                        }}
+                    />
+
+                    {/* Canvas layer (interactive, full screen) */}
+                    <div className="absolute inset-0 z-10 pointer-events-auto">
+                        {children}
                     </div>
 
-                    {/* Main layout */}
+                    {/* Drag layer (top-most) */}
                     <div
-                        className={`relative w-full h-full min-h-0 flex ${
-                            mobile ? "flex-col" : "flex-row"
+                        ref={dragRef}
+                        className={`absolute inset-0 z-40 ${
+                            dragging
+                                ? "pointer-events-auto"
+                                : "pointer-events-none"
                         }`}
-                    >
-                        {/* Left toolbar */}
+                    />
+
+                    {/* UI layer */}
+                    <div className="relative z-30 h-full pointer-events-none flex flex-col">
+                        {/* Titlebar */}
                         <div
-                            className={`${
-                                mobile ? "hidden" : "flex-1 max-w-80"
-                            } pointer-events-auto`}
+                            ref={titlebarRef}
+                            className="h-18 w-full bg-white flex border-b border-b-neutral-200 pointer-events-auto"
                         >
-                            <EditorToolbar />
+                            <img
+                                className="my-auto mx-10 h-8"
+                                src="logo.svg"
+                            ></img>
                         </div>
 
-                        {/* Center content anchor (measurement only) */}
+                        {/* Main layout */}
                         <div
-                            ref={contentContainerRef}
-                            className={`${mobile ? "flex-1" : "flex-[2]"}`}
-                        />
-
-                        {/* Right toolbar */}
-                        <div
-                            className={`${
-                                mobile ? "hidden" : "flex-1 max-w-80"
-                            } pointer-events-auto`}
+                            className={`relative w-full h-full min-h-0 flex ${
+                                mobile ? "flex-col" : "flex-row"
+                            }`}
                         >
-                            <InspectorToolbar />
-                        </div>
-
-                        {/* Mobile bottom bar */}
-                        {mobile && (
-                            <div className="flex flex-row w-full mt-auto max-h-96 pointer-events-auto">
-                                <div className="flex-1">
-                                    <EditorToolbar />
-                                </div>
-                                <div className="flex-1">
-                                    <InspectorToolbar />
-                                </div>
+                            {/* Left toolbar */}
+                            <div
+                                className={`${
+                                    mobile ? "hidden" : "flex-1 max-w-80"
+                                } pointer-events-auto`}
+                            >
+                                <EditorToolbar />
                             </div>
-                        )}
+
+                            {/* Center content anchor (measurement only) */}
+                            <div
+                                ref={contentContainerRef}
+                                className={`${mobile ? "flex-1" : "flex-[2]"}`}
+                            />
+
+                            {/* Right toolbar */}
+                            <div
+                                className={`${
+                                    mobile ? "hidden" : "flex-1 max-w-80"
+                                } pointer-events-auto`}
+                            >
+                                <InspectorToolbar />
+                            </div>
+
+                            {/* Mobile bottom bar */}
+                            {mobile && (
+                                <div className="flex flex-row w-full mt-auto max-h-96 pointer-events-auto">
+                                    <div className="flex-1">
+                                        <EditorToolbar />
+                                    </div>
+                                    <div className="flex-1">
+                                        <InspectorToolbar />
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
-            </div>
-        </layoutContext.Provider>
+            </layoutContext.Provider>
+        </CircuitProvider>
     );
 };
