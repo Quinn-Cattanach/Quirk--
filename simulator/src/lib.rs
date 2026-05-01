@@ -8,9 +8,9 @@ use num_complex::Complex32;
 use serde::Deserialize;
 use wasm_bindgen::prelude::*;
 pub mod circuit;
-pub mod gates;
 pub mod representation;
 pub mod state;
+pub mod gates;
 
 pub const SQRT2_INV_COMPLEX: Complex32 = Complex32::new(1f32 / SQRT_2, 0.0);
 pub const ONE_COMPLEX: Complex32 = Complex32::new(1.0, 0.0);

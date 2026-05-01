@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { greet } from "./simulator/pkg/quirkmm_simulator";
-import { renderBloch } from "./state/bloch";
 import { SingleQbitState } from "./state/single-qbit";
 import { Layout } from "./layout";
 import { Circuit } from "./circuit/circuit";
 import { CircuitElement } from "./circuit/circuit-element";
+import { BlochSphereDemo } from "./state/bloch";
 
 function App() {
     useEffect(() => {
@@ -19,9 +19,12 @@ function App() {
     }, []);
 
     return (
-        <Layout>
-            <CircuitElement />
-        </Layout>
+        <>
+            {/*<BlochSphereDemo />*/}
+            <Layout>
+                <CircuitElement />
+            </Layout>
+        </>
     );
 }
 

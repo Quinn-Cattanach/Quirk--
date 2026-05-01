@@ -1,5 +1,61 @@
 import { CircuitComponent } from "../circuit-component/circuit-component";
 
+// Adjust this import to wherever you keep the mathjax helpers.
+import { getSvgString, svgToImageBitmap } from "../mathjax";
+
+export type KetType = "0" | "1" | "+" | "-" | "+i" | "-i";
+
+const KET_TEX: Record<KetType, string> = {
+    "0": "|0\\rangle",
+    "1": "|1\\rangle",
+    "+": "|\\text{+}\\rangle",
+    "-": "|\\text{−}\\rangle",
+    "+i": "|i\\rangle",
+    "-i": "|{-}i\\rangle",
+};
+
+// Module-level cache shared across all Circuit instances.
+const ketCache = new Map<string, HTMLCanvasElement>();
+const ketPending = new Map<string, Promise<void>>();
+
+const ketKey = (ket: KetType, sizeCSS: number) => `${ket}@${sizeCSS}`;
+
+function loadKet(ket: KetType, sizeCSS: number, onLoaded: () => void): void {
+    const key = ketKey(ket, sizeCSS);
+    if (ketCache.has(key)) {
+        onLoaded();
+        return;
+    }
+    const existing = ketPending.get(key);
+    if (existing) {
+        existing.then(onLoaded);
+        return;
+    }
+    const p = (async () => {
+        try {
+            const svg = await getSvgString(KET_TEX[ket], false);
+            const canvas = await svgToImageBitmap(svg, sizeCSS);
+            ketCache.set(key, canvas);
+        } catch (e) {
+            console.warn(`Failed to load ket bitmap for |${ket}>:`, e);
+        }
+    })();
+    ketPending.set(key, p);
+    p.then(() => {
+        ketPending.delete(key);
+        onLoaded();
+    });
+}
+
+function getKetBitmap(
+    ket: KetType,
+    sizeCSS: number,
+): HTMLCanvasElement | undefined {
+    return ketCache.get(ketKey(ket, sizeCSS));
+}
+
+// ---------- options ----------
+
 export type CircuitRenderingOptions = {
     rowPadding: number;
     columnPadding: number;
@@ -14,6 +70,12 @@ export type CircuitRenderingOptions = {
     oplusRadius: number;
     /** Stroke width of the ⊕ symbol (CSS px). */
     oplusStrokeWidth: number;
+    /** Width reserved on the left for ket labels (CSS px). */
+    ketAreaWidth: number;
+    /** Height of rendered ket bitmaps (CSS px). */
+    ketHeight: number;
+    /** Gap between the ket label and the wire start (CSS px). */
+    ketRightPadding: number;
 };
 
 export const DEFAULT_RENDERING_OPTIONS: CircuitRenderingOptions = {
@@ -28,10 +90,16 @@ export const DEFAULT_RENDERING_OPTIONS: CircuitRenderingOptions = {
     controlLineWidth: 1.5,
     oplusRadius: 12,
     oplusStrokeWidth: 1.5,
+    ketAreaWidth: 44,
+    ketHeight: 30,
+    ketRightPadding: 6,
 };
+
+// ---------- Circuit ----------
 
 export class Circuit {
     #components: (CircuitComponent | null)[][];
+    #startingStates: KetType[];
     #needsDisplay: (() => void) | null = null;
     options: CircuitRenderingOptions;
 
@@ -62,16 +130,41 @@ export class Circuit {
             controlLineWidth: this.options.controlLineWidth * dpr,
             oplusRadius: this.options.oplusRadius * dpr,
             oplusStrokeWidth: this.options.oplusStrokeWidth * dpr,
+            ketAreaWidth: this.options.ketAreaWidth * dpr,
+            ketRightPadding: this.options.ketRightPadding * dpr,
         };
     }
 
-    addQbit() {
-        this.#components.push(Array(this.numColumns).fill(null));
+    // ---------- starting states ----------
+
+    setStartingState(row: number, ket: KetType): void {
+        if (row < 0 || row >= this.numQbit) return;
+        this.#startingStates[row] = ket;
+        this.#ensureKetLoaded(ket);
         this.#needsDisplay?.();
     }
+
+    getStartingState(row: number): KetType {
+        return this.#startingStates[row];
+    }
+
+    #ensureKetLoaded(ket: KetType): void {
+        loadKet(ket, this.options.ketHeight, () => this.#needsDisplay?.());
+    }
+
+    // ---------- qbit management ----------
+
+    addQbit() {
+        this.#components.push(Array(this.numColumns).fill(null));
+        this.#startingStates.push("0");
+        this.#ensureKetLoaded("0");
+        this.#needsDisplay?.();
+    }
+
     removeQbit(index: number) {
         if (index < this.numQbit) {
             this.#components.splice(index, 1);
+            this.#startingStates.splice(index, 1);
             this.#needsDisplay?.();
         }
     }
@@ -94,6 +187,7 @@ export class Circuit {
         );
         return Math.max(max, this.s.minColumnWidth);
     }
+
     heightOfRow(index: number): number {
         if (index >= this.numQbit) return 0;
         const max = this.#components[index].reduce(
@@ -115,7 +209,6 @@ export class Circuit {
 
     isColumnEmpty(col: number): boolean {
         if (col < 0 || col >= this.numColumns) return true;
-
         for (let i = 0; i < this.numQbit; i += 1) {
             if (this.#components[i][col] != null) return false;
         }
@@ -124,7 +217,6 @@ export class Circuit {
 
     removeColumn(col: number) {
         if (col < 0 || col >= this.numColumns) return;
-
         for (const row of this.#components) {
             row.splice(col, 1);
         }
@@ -143,14 +235,18 @@ export class Circuit {
         return this.#components[row][col];
     }
 
+    // ---------- geometry ----------
+
     get width(): number {
         let w = 0;
         for (let i = 0; i < this.numColumns; i += 1) w += this.widthOfColumn(i);
         if (this.numColumns > 1)
             w += (this.numColumns - 1) * this.s.columnPadding;
         w += 2 * this.s.wireExtension;
+        w += this.s.ketAreaWidth;
         return w;
     }
+
     get height(): number {
         let h = 0;
         for (let i = 0; i < this.numQbit; i += 1) h += this.heightOfRow(i);
@@ -165,16 +261,19 @@ export class Circuit {
         }
         return y;
     }
+
     rowCenterY(index: number): number {
         return this.rowTopY(index) + this.heightOfRow(index) / 2;
     }
+
     private columnLeftX(index: number): number {
-        let x = this.s.wireExtension;
+        let x = this.s.ketAreaWidth + this.s.wireExtension;
         for (let j = 0; j < index; j += 1) {
             x += this.widthOfColumn(j) + this.s.columnPadding;
         }
         return x;
     }
+
     columnCenterX(index: number): number {
         return this.columnLeftX(index) + this.widthOfColumn(index) / 2;
     }
@@ -187,43 +286,31 @@ export class Circuit {
         x: number,
         y: number,
     ): { row: number; col: number; insert: boolean } | null {
-        // Which row is this point in?
         let row = -1;
-
         let yCursor = 0;
 
         for (let i = 0; i < this.numQbit; i += 1) {
             const rowH = this.heightOfRow(i);
             const pad = this.s.rowPadding;
-
             const top = yCursor;
             const bottom = yCursor + rowH;
-
-            // STRICT bounds (no overlap)
             if (y >= top && y < bottom) {
                 row = i;
                 break;
             }
-
             yCursor = bottom + pad;
         }
 
         if (row === -1) return null;
 
-        // Walk columns. For each column, define an "insert zone" before it
-        // (the gap between the previous column and this one) and a "column zone"
-        // (the column itself).
-        const halfPad = this.s.columnPadding / 2;
-        let xCursor = this.s.wireExtension;
+        let xCursor = this.s.ketAreaWidth + this.s.wireExtension;
         const pad = this.s.columnPadding;
 
         for (let j = 0; j < this.numColumns; j += 1) {
             const colW = this.widthOfColumn(j);
-
             const colStart = xCursor;
             const colEnd = xCursor + colW;
 
-            // INSERT zone BEFORE column j (except first already handled by wire area)
             const insertZoneStart = colStart - pad / 2;
             const insertZoneEnd = colStart + pad / 2;
 
@@ -231,7 +318,6 @@ export class Circuit {
                 return { row, col: j, insert: true };
             }
 
-            // COLUMN zone (strict, no overlap)
             if (x >= colStart + pad / 2 && x < colEnd - pad / 2) {
                 if (this.#components[row][j] == null) {
                     return { row, col: j, insert: false };
@@ -242,14 +328,14 @@ export class Circuit {
             xCursor = colEnd + pad;
         }
 
-        const lastColEnd =
-            this.columnLeftX(this.numColumns - 1) +
-            this.widthOfColumn(this.numColumns - 1);
-
-        const endInsertZoneStart = lastColEnd - pad / 2;
-
-        if (x >= endInsertZoneStart) {
-            return { row, col: this.numColumns, insert: true };
+        if (this.numColumns > 0) {
+            const lastColEnd =
+                this.columnLeftX(this.numColumns - 1) +
+                this.widthOfColumn(this.numColumns - 1);
+            const endInsertZoneStart = lastColEnd - pad / 2;
+            if (x >= endInsertZoneStart) {
+                return { row, col: this.numColumns, insert: true };
+            }
         }
 
         return null;
@@ -295,7 +381,6 @@ export class Circuit {
         width: number;
         height: number;
     } {
-        // HARD GUARD: invalid rows/columns should not render anything
         if (target.row < 0 || target.row >= this.numQbit || target.col < 0) {
             return { x: -1, y: -1, width: 0, height: 0 };
         }
@@ -305,13 +390,10 @@ export class Circuit {
 
         if (target.insert) {
             const slotW = this.s.minColumnWidth;
-
-            // clamp column for safety
             const col = Math.min(target.col, this.numColumns);
-
             let x: number;
             if (col === 0) {
-                x = this.s.wireExtension - slotW / 2;
+                x = this.columnLeftX(0) - slotW / 2;
             } else if (col >= this.numColumns) {
                 x =
                     this.columnLeftX(this.numColumns - 1) +
@@ -323,7 +405,6 @@ export class Circuit {
                     this.columnLeftX(col - 1) + this.widthOfColumn(col - 1);
                 x = leftEnd + this.s.columnPadding / 2 - slotW / 2;
             }
-
             return { x, y, width: slotW, height: rowH };
         }
 
@@ -343,13 +424,11 @@ export class Circuit {
         ctx.fillStyle = "#FFFFFF";
         ctx.lineWidth = this.s.oplusStrokeWidth;
 
-        // White-filled circle so the wire breaks cleanly inside.
         ctx.beginPath();
         ctx.arc(cx, cy, r, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
 
-        // Cross.
         ctx.beginPath();
         ctx.moveTo(cx - r, cy);
         ctx.lineTo(cx + r, cy);
@@ -362,10 +441,6 @@ export class Circuit {
 
     #phantom: { col: number; width: number } | null = null;
 
-    /**
-     * Show a phantom column at index `col` (rendering only — does NOT affect
-     * hit-testing or any geometry the hit-test relies on). Pass null to clear.
-     */
     setPhantomColumn(col: number | null) {
         if (col === null) {
             if (this.#phantom) {
@@ -386,9 +461,8 @@ export class Circuit {
         this.#needsDisplay?.();
     }
 
-    /** Like columnLeftX, but accounts for the phantom column. Render only. */
     private renderColumnLeftX(index: number): number {
-        let x = this.s.wireExtension;
+        let x = this.s.ketAreaWidth + this.s.wireExtension;
         for (let j = 0; j < index; j += 1) {
             if (this.#phantom && this.#phantom.col === j) {
                 x += this.#phantom.width + this.s.columnPadding;
@@ -401,22 +475,22 @@ export class Circuit {
         return x;
     }
 
-    /** X of the phantom column's left edge, if any. Render only. */
     private renderPhantomLeftX(): number | null {
         if (!this.#phantom) return null;
-        let x = this.s.wireExtension;
+        let x = this.s.ketAreaWidth + this.s.wireExtension;
         for (let j = 0; j < this.#phantom.col; j += 1) {
             x += this.widthOfColumn(j) + this.s.columnPadding;
         }
         return x;
     }
 
-    /** Total render-side width including the phantom. */
     private get renderWidth(): number {
         let w = this.width;
         if (this.#phantom) w += this.#phantom.width + this.s.columnPadding;
         return w;
     }
+
+    // ---------- render ----------
 
     render(
         ctx: CanvasRenderingContext2D,
@@ -430,15 +504,27 @@ export class Circuit {
         const h = this.height;
         ctx.clearRect(0, 0, w, h);
 
-        // wires
+        // wires (start AFTER the ket area)
+        const wireStart = this.s.ketAreaWidth;
         ctx.strokeStyle = this.options.wireColor;
         ctx.lineWidth = this.s.wireWidth;
         for (let i = 0; i < this.numQbit; i += 1) {
             const y = this.rowCenterY(i);
             ctx.beginPath();
-            ctx.moveTo(0, y);
+            ctx.moveTo(wireStart, y);
             ctx.lineTo(w, y);
             ctx.stroke();
+        }
+
+        // ket labels (right-aligned in the ket area, vertically centered on each wire)
+        for (let i = 0; i < this.numQbit; i += 1) {
+            const ket = this.#startingStates[i];
+            const bitmap = getKetBitmap(ket, this.options.ketHeight);
+            if (!bitmap) continue;
+            const cy = this.rowCenterY(i);
+            const x =
+                this.s.ketAreaWidth - bitmap.width - this.s.ketRightPadding;
+            ctx.drawImage(bitmap, x, cy - bitmap.height / 2);
         }
 
         ctx.strokeStyle = this.options.controlLineColor;
@@ -448,21 +534,37 @@ export class Circuit {
         for (let j = 0; j < this.numColumns; j += 1) {
             const occupied: number[] = [];
             let hasControl = false;
+            let hasNonControlGate = false;
 
             for (let i = 0; i < this.numQbit; i += 1) {
                 const c = this.#components[i][j];
                 if (c) {
                     occupied.push(i);
-                    if (c.type === "control" || c.type === "not-control")
+                    if (c.type === "control" || c.type === "not-control") {
                         hasControl = true;
+                    } else {
+                        hasNonControlGate = true;
+                    }
                 }
             }
 
             const x = this.columnCenterX(j);
             const ghostInThisCol =
                 ghost && !ghost.target.insert && ghost.target.col === j;
+            const ghostIsControl =
+                !!ghostInThisCol &&
+                (ghost!.component.type === "control" ||
+                    ghost!.component.type === "not-control");
 
-            if (hasControl && occupied.length >= 2) {
+            const existingValid =
+                hasControl && hasNonControlGate && occupied.length >= 2;
+
+            const wouldBeValid =
+                ghostInThisCol &&
+                (hasControl || ghostIsControl) &&
+                (hasNonControlGate || !ghostIsControl);
+
+            if (existingValid) {
                 occupied.sort((a, b) => a - b);
                 ctx.beginPath();
                 ctx.strokeStyle = this.options.controlLineColor;
@@ -472,56 +574,44 @@ export class Circuit {
                 ctx.stroke();
             }
 
-            const willHaveControl =
-                hasControl ||
-                (ghostInThisCol &&
-                    (ghost!.component.type === "control" ||
-                        ghost!.component.type === "not-control"));
-
-            if (ghostInThisCol && willHaveControl && occupied.length > 0) {
-                // Find the existing boundary closest to the ghost
-                const topExisting = Math.min(...occupied);
-                const bottomExisting = Math.max(...occupied);
+            if (ghostInThisCol && wouldBeValid && occupied.length > 0) {
+                occupied.sort((a, b) => a - b);
+                const topExisting = occupied[0];
+                const bottomExisting = occupied[occupied.length - 1];
                 const ghostRow = ghost!.target.row;
 
-                let extensionStart: number;
-                if (ghostRow < topExisting) {
-                    extensionStart = topExisting;
-                } else if (ghostRow > bottomExisting) {
-                    extensionStart = bottomExisting;
-                } else {
-                    extensionStart = ghostRow;
-                }
-
-                if (extensionStart !== ghostRow) {
-                    ctx.save();
-                    ctx.globalAlpha = 0.5;
-                    ctx.beginPath();
-                    ctx.strokeStyle = this.options.controlLineColor;
-                    ctx.lineWidth = this.s.controlLineWidth;
-                    ctx.moveTo(x, this.rowCenterY(extensionStart));
-                    ctx.lineTo(x, this.rowCenterY(ghostRow));
-                    ctx.stroke();
-                    ctx.restore();
-                }
-            } else if (
-                ghostInThisCol &&
-                (ghost!.component.type === "control" ||
-                    ghost!.component.type === "not-control") &&
-                occupied.length === 1
-            ) {
                 ctx.save();
                 ctx.globalAlpha = 0.5;
-                ctx.beginPath();
-                ctx.moveTo(x, this.rowCenterY(occupied[0]));
-                ctx.lineTo(x, this.rowCenterY(ghost!.target.row));
-                ctx.stroke();
+                ctx.strokeStyle = this.options.controlLineColor;
+                ctx.lineWidth = this.s.controlLineWidth;
+
+                if (existingValid) {
+                    if (ghostRow < topExisting) {
+                        ctx.beginPath();
+                        ctx.moveTo(x, this.rowCenterY(topExisting));
+                        ctx.lineTo(x, this.rowCenterY(ghostRow));
+                        ctx.stroke();
+                    } else if (ghostRow > bottomExisting) {
+                        ctx.beginPath();
+                        ctx.moveTo(x, this.rowCenterY(bottomExisting));
+                        ctx.lineTo(x, this.rowCenterY(ghostRow));
+                        ctx.stroke();
+                    }
+                } else {
+                    const minRow = Math.min(topExisting, ghostRow);
+                    const maxRow = Math.max(bottomExisting, ghostRow);
+                    if (minRow !== maxRow) {
+                        ctx.beginPath();
+                        ctx.moveTo(x, this.rowCenterY(minRow));
+                        ctx.lineTo(x, this.rowCenterY(maxRow));
+                        ctx.stroke();
+                    }
+                }
                 ctx.restore();
             }
         }
 
         // actual components
-
         for (let j = 0; j < this.numColumns; j += 1) {
             let columnHasControl = false;
             for (let i = 0; i < this.numQbit; i += 1) {
@@ -568,7 +658,6 @@ export class Circuit {
         }
 
         // phantom preview
-
         if (ghost) {
             const rect = this.ghostRect(ghost.target);
             if (rect.width > 0 && rect.height > 0) {
@@ -627,6 +716,13 @@ export class Circuit {
         }
         // Each row gets its own array — `Array(n).fill([null])` shares one.
         this.#components = Array.from({ length: nQbit }, () => [null]);
+        this.#startingStates = Array.from(
+            { length: nQbit },
+            () => "0" as KetType,
+        );
         this.options = { ...DEFAULT_RENDERING_OPTIONS, ...options };
+
+        // Kick off loading the default ket bitmap.
+        this.#ensureKetLoaded("0");
     }
 }
