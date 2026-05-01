@@ -38,6 +38,7 @@ export const EditorToolbar = () => {
                         ...[
                             CircuitComponent.createControl(),
                             CircuitComponent.createNotControl(),
+                            CircuitComponent.createSwap(),
                         ].map<ToolbarItem>((gate) => {
                             return {
                                 type: "custom",

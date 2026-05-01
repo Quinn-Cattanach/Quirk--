@@ -127,6 +127,9 @@ export const CircuitElement = () => {
 
         const findComponentAt = (clientX: number, clientY: number) => {
             const { x, y } = toCircuitCoords(clientX, clientY);
+            const spanning = circuit.findSpanningAt(x, y);
+            if (spanning) return spanning;
+
             for (let i = 0; i < circuit.numQbit; i += 1) {
                 const rowH = circuit.heightOfRow(i);
                 const rowTop = circuit.rowCenterY(i) - rowH / 2;

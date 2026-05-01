@@ -6,12 +6,10 @@ import {
     type PropsWithChildren,
 } from "react";
 import { Circuit } from "./circuit/circuit";
-import type { NoiseModel } from "./simulator/bindings/NoiseModel";
 import { CircuitComponent } from "./circuit-component/circuit-component";
 
 type CircuitContext = {
     circuit: Circuit;
-    noiseModel: NoiseModel;
     setEnergyDecay: (newValue: number) => void;
     setDephasingFactor: (newValue: number) => void;
     setFlipProbability: (newValue: number) => void;
@@ -46,31 +44,23 @@ export const CircuitProvider = ({ children }: PropsWithChildren) => {
         return c;
     });
 
-    const [noiseModel, setNoiseModel] = useState<NoiseModel>({
-        t1: 50.0,
-        t2: 70.0,
-        p_depolarize: 0.001,
-        gate_time: 0.1,
-    });
-
     const setDephasingFactor = (newValue: number) => {
-        setNoiseModel((p) => ({ ...p, t2: newValue }));
+        circuit.noiseModel = { ...circuit.noiseModel, t2: newValue };
     };
     const setEnergyDecay = (newValue: number) => {
-        setNoiseModel((p) => ({ ...p, t1: newValue }));
+        circuit.noiseModel = { ...circuit.noiseModel, t1: newValue };
     };
     const setFlipProbability = (newValue: number) => {
-        setNoiseModel((p) => ({ ...p, p_depolarize: newValue }));
+        circuit.noiseModel = { ...circuit.noiseModel, p_depolarize: newValue };
     };
     const setGateTime = (newValue: number) => {
-        setNoiseModel((p) => ({ ...p, gate_time: newValue }));
+        circuit.noiseModel = { ...circuit.noiseModel, gate_time: newValue };
     };
 
     return (
         <circuitContext.Provider
             value={{
                 circuit,
-                noiseModel,
                 setDephasingFactor,
                 setEnergyDecay,
                 setFlipProbability,

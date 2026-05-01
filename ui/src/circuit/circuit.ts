@@ -137,14 +137,32 @@ export class Circuit {
         return this.#components[0]?.length ?? 0;
     }
 
-    #noiseModel: NoiseModel | null = null;
+    #columnSpanningAt(col: number): CircuitComponent | null {
+        if (col < 0 || col >= this.numColumns) return null;
+        for (let r = 0; r < this.numQbit; r++) {
+            const c = this.#components[r][col];
+            if (c && c.spans === "column") return c;
+        }
+        return null;
+    }
+
+    #columnIsBlocked(col: number): boolean {
+        return this.#columnSpanningAt(col) !== null;
+    }
+
+    #noiseModel: NoiseModel = {
+        t1: 50.0,
+        t2: 70.0,
+        p_depolarize: 0.001,
+        gate_time: 0.1,
+    };
     #onSimulation: ((result: SimulationResult) => void) | null = null;
     #latestResult: SimulationResult | null = null;
 
-    get noiseModel(): NoiseModel | null {
+    get noiseModel(): NoiseModel {
         return this.#noiseModel;
     }
-    set noiseModel(noise: NoiseModel | null) {
+    set noiseModel(noise: NoiseModel) {
         this.#noiseModel = noise;
         this.#fireDidChange();
     }
@@ -178,47 +196,63 @@ export class Circuit {
 
     #simScheduled = false;
 
-    #hasBlochInspectors(): boolean {
+    #hasInspectors(): boolean {
         for (const row of this.#components) {
             for (const c of row) {
-                if (c?.type === "bloch-inspector") return true;
+                if (
+                    c?.type === "bloch-inspector" ||
+                    c?.type === "fidelity-inspector" ||
+                    c?.type === "density-inspector"
+                ) {
+                    return true;
+                }
             }
         }
         return false;
     }
 
-    #updateBlochInspectors(result: SimulationResult) {
+    #updateInspectors(result: SimulationResult) {
         for (let col = 0; col < this.numColumns; col++) {
+            const idx = stageIndexAtUiColumn(result.columnMap, col);
+            const stage = result.stages[idx] ?? null;
+
             for (let row = 0; row < this.numQbit; row++) {
                 const c = this.#components[row][col];
-                if (c?.type !== "bloch-inspector") continue;
-                const idx = stageIndexAtUiColumn(result.columnMap, col);
-                const stage = result.stages[idx];
-                const info = stage?.clean.qubits[row] ?? null;
-                console.log(
-                    `inspector @ (row=${row}, col=${col}) → stage[${idx}], ` +
-                        `q${row}: ${info ? `sep=${info.is_separable}, bloch=${info.bloch_vector}` : "null"}`,
-                );
-                c.setQubitInfo(info);
+                if (!c) continue;
+                if (c.type === "bloch-inspector") {
+                    const info = stage?.clean.qubits[row] ?? null;
+                    c.setQubitInfo(info);
+                } else if (
+                    c.type === "fidelity-inspector" ||
+                    c.type === "density-inspector"
+                ) {
+                    c.setStage(stage);
+                }
             }
         }
     }
 
-    #clearBlochInspectors() {
+    #clearInspectors() {
         for (const row of this.#components) {
             for (const c of row) {
                 if (c?.type === "bloch-inspector") c.setQubitInfo(null);
+                if (
+                    c?.type === "fidelity-inspector" ||
+                    c?.type === "density-inspector"
+                ) {
+                    c.setStage(null);
+                }
             }
         }
     }
 
     #scheduleSimulation() {
-        if (!this.#onSimulation && !this.#hasBlochInspectors()) return;
+        if (!this.#onSimulation && !this.#hasInspectors()) return;
         if (this.#simScheduled) return;
         this.#simScheduled = true;
         queueMicrotask(() => {
             this.#simScheduled = false;
-            const hasInspectors = this.#hasBlochInspectors();
+            const hasInspectors = this.#hasInspectors();
             if (!this.#onSimulation && !hasInspectors) return;
 
             console.group("[sim]");
@@ -235,11 +269,11 @@ export class Circuit {
             if (result) {
                 console.log("columnMap:", result.columnMap);
                 console.log("stages:", result.stages.length, "total");
-                if (hasInspectors) this.#updateBlochInspectors(result);
+                if (hasInspectors) this.#updateInspectors(result);
                 this.#onSimulation?.(result);
             } else if (hasInspectors) {
                 console.warn("simulate() returned null — clearing inspectors");
-                this.#clearBlochInspectors();
+                this.#clearInspectors();
             }
             console.groupEnd();
             this.#needsDisplay?.();
@@ -308,13 +342,57 @@ export class Circuit {
         while (col >= this.numColumns) {
             for (const r of this.#components) r.push(null);
         }
+
+        if (c) {
+            if (c.spans === "column" && !this.isColumnEmpty(col)) return;
+            if (c.type === "swap") {
+                if (this.#columnIsBlocked(col)) return;
+                if (this.#columnHasNonSwap(col)) return;
+                if (this.#countSwapsInColumn(col) >= 2) return;
+            } else if (c.spans === "cell") {
+                if (this.#columnIsBlocked(col)) return;
+                if (this.#isSwapColumn(col)) return;
+            }
+        }
+
         this.#components[row][col] = c;
         if (c && this.#needsDisplay) c.needsDisplay = this.#needsDisplay;
         this.#fireDidChange();
     }
 
+    findSpanningAt(
+        x: number,
+        y: number,
+    ): { row: number; col: number; component: CircuitComponent } | null {
+        if (this.numQbit === 0) return null;
+        const top = this.rowTopY(0);
+        const lastRow = this.numQbit - 1;
+        const bottom = this.rowTopY(lastRow) + this.heightOfRow(lastRow);
+        if (y < top || y >= bottom) return null;
+
+        for (let j = 0; j < this.numColumns; j++) {
+            const colW = this.widthOfColumn(j);
+            const colLeft = this.columnLeftX(j);
+            if (x < colLeft || x >= colLeft + colW) continue;
+            const spanning = this.#columnSpanningAt(j);
+            if (spanning) {
+                for (let r = 0; r < this.numQbit; r++) {
+                    if (this.#components[r][j] === spanning) {
+                        return { row: r, col: j, component: spanning };
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
     widthOfColumn(index: number): number {
         if (index >= this.numColumns) return 0;
+        const spanning = this.#columnSpanningAt(index);
+        if (spanning) {
+            const pref = spanning.preferredColumnWidth ?? spanning.width;
+            return Math.max(pref, this.s.minColumnWidth);
+        }
         const max = this.#components.reduce(
             (p, row) => Math.max(p, row[index]?.width ?? 0),
             0,
@@ -453,6 +531,7 @@ export class Circuit {
             }
 
             if (x >= colStart + pad / 2 && x < colEnd - pad / 2) {
+                if (this.#columnIsBlocked(j)) return null;
                 if (this.#components[row][j] == null) {
                     return { row, col: j, insert: false };
                 }
@@ -499,14 +578,36 @@ export class Circuit {
         while (target.col >= this.numColumns) {
             for (const r of this.#components) r.push(null);
         }
-        if (this.#components[target.row][target.col] != null) return;
-        this.#components[target.row][target.col] = component;
+
+        if (component.spans === "column") {
+            if (!this.isColumnEmpty(target.col)) return;
+            this.#components[target.row][target.col] = component;
+        } else if (component.type === "swap") {
+            // Swap target: only allowed in columns that are empty or contain
+            // only other swaps. Cap at 2 per column.
+            if (this.#columnIsBlocked(target.col)) return;
+            if (this.#columnHasNonSwap(target.col)) return;
+            if (this.#countSwapsInColumn(target.col) >= 2) return;
+            if (this.#components[target.row][target.col] != null) return;
+            this.#components[target.row][target.col] = component;
+        } else {
+            // Single cell, normal gate. Forbidden in column-locked or swap-only columns.
+            if (this.#columnIsBlocked(target.col)) return;
+            if (this.#isSwapColumn(target.col)) return;
+            if (this.#components[target.row][target.col] != null) return;
+            this.#components[target.row][target.col] = component;
+        }
+
         if (this.#needsDisplay) component.needsDisplay = this.#needsDisplay;
         this.#fireDidChange();
 
-        this.#components[target.row][target.col] = component;
-        if (component.type === "bloch-inspector") {
-            component.setQubitInfo(null);
+        if (
+            component.type === "bloch-inspector" ||
+            component.type === "fidelity-inspector" ||
+            component.type === "density-inspector"
+        ) {
+            component.setQubitInfo?.(null);
+            component.setStage?.(null);
         }
     }
 
@@ -629,7 +730,30 @@ export class Circuit {
         return w;
     }
 
-    // ---------- render ----------
+    #countSwapsInColumn(col: number): number {
+        if (col < 0 || col >= this.numColumns) return 0;
+        let n = 0;
+        for (let r = 0; r < this.numQbit; r++) {
+            if (this.#components[r][col]?.type === "swap") n++;
+        }
+        return n;
+    }
+
+    #columnHasNonSwap(col: number): boolean {
+        if (col < 0 || col >= this.numColumns) return false;
+        for (let r = 0; r < this.numQbit; r++) {
+            const c = this.#components[r][col];
+            if (c && c.type !== "swap") return true;
+        }
+        return false;
+    }
+
+    #isSwapColumn(col: number): boolean {
+        // Has at least one swap and nothing else (besides null cells).
+        return (
+            this.#countSwapsInColumn(col) > 0 && !this.#columnHasNonSwap(col)
+        );
+    }
 
     render(
         ctx: CanvasRenderingContext2D,
@@ -677,13 +801,13 @@ export class Circuit {
 
             for (let i = 0; i < this.numQbit; i += 1) {
                 const c = this.#components[i][j];
-                if (c) {
-                    occupied.push(i);
-                    if (c.type === "control" || c.type === "not-control") {
-                        hasControl = true;
-                    } else {
-                        hasNonControlGate = true;
-                    }
+                if (!c) continue;
+                if (c.type === "bloch-inspector") continue; // never participates
+                occupied.push(i);
+                if (c.type === "control" || c.type === "not-control") {
+                    hasControl = true;
+                } else if (c.type !== "swap") {
+                    hasNonControlGate = true;
                 }
             }
 
@@ -748,10 +872,43 @@ export class Circuit {
                 }
                 ctx.restore();
             }
+
+            const swapRows: number[] = [];
+            for (let i = 0; i < this.numQbit; i++) {
+                if (this.#components[i][j]?.type === "swap") swapRows.push(i);
+            }
+            if (swapRows.length === 2) {
+                const x2 = this.columnCenterX(j);
+                ctx.save();
+                ctx.strokeStyle = this.options.controlLineColor;
+                ctx.lineWidth = this.s.controlLineWidth;
+                ctx.beginPath();
+                ctx.moveTo(x2, this.rowCenterY(swapRows[0]));
+                ctx.lineTo(x2, this.rowCenterY(swapRows[1]));
+                ctx.stroke();
+                ctx.restore();
+            }
         }
 
         // actual components
         for (let j = 0; j < this.numColumns; j += 1) {
+            // Column-spanning: paint once across the full column height.
+            const spanning = this.#columnSpanningAt(j);
+            if (spanning) {
+                const colW = this.widthOfColumn(j);
+                const colX = this.columnLeftX(j);
+                const topY = this.rowTopY(0);
+                const lastRow = this.numQbit - 1;
+                const bottomY =
+                    this.rowTopY(lastRow) + this.heightOfRow(lastRow);
+                const colH = bottomY - topY;
+                ctx.save();
+                ctx.translate(colX, topY);
+                spanning.drawSpanning(ctx, colW, colH);
+                ctx.restore();
+                continue;
+            }
+
             let columnHasControl = false;
             for (let i = 0; i < this.numQbit; i += 1) {
                 if (
@@ -798,6 +955,40 @@ export class Circuit {
 
         // phantom preview
         if (ghost) {
+            const overBlocked =
+                !ghost.target.insert &&
+                ghost.target.col >= 0 &&
+                ghost.target.col < this.numColumns &&
+                this.#columnIsBlocked(ghost.target.col);
+            if (overBlocked) {
+                ctx.restore();
+                return;
+            }
+
+            // Spanning component being dragged → preview as full-column rect.
+            if (ghost.component.spans === "column") {
+                const col = ghost.target.col;
+                // For an `insert` target, it'll be drawn into a fresh column —
+                // use ghostRect to find x. For a non-insert target, the column
+                // must be empty (drop will reject otherwise) — show preview anyway.
+                const rect = this.ghostRect(ghost.target);
+                if (rect.width > 0) {
+                    const slotW = Math.max(rect.width, ghost.component.width);
+                    const topY = this.rowTopY(0);
+                    const lastRow = this.numQbit - 1;
+                    const bottomY =
+                        this.rowTopY(lastRow) + this.heightOfRow(lastRow);
+                    const colH = bottomY - topY;
+                    ctx.save();
+                    ctx.globalAlpha = 0.5;
+                    ctx.translate(rect.x, topY);
+                    ghost.component.drawSpanning(ctx, slotW, colH);
+                    ctx.restore();
+                }
+                ctx.restore();
+                return;
+            }
+
             const rect = this.ghostRect(ghost.target);
             if (rect.width > 0 && rect.height > 0) {
                 ctx.save();

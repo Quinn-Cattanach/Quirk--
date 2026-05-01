@@ -76,6 +76,71 @@ impl Density {
         self
     }
 
+    /// thermal relaxation dephasing channel (Section II C, Georgopoulos et al.)
+    pub fn apply_relaxation_and_dephasing(&mut self, q: usize) {
+        let (t1, t2, t_gate) = match self.noise {
+            Some(m) => (m.t1, m.t2, m.gate_time),
+            None => return,
+        };
+
+        // this is a requirement for the assumptions of this simplified noise model, it gets more complex if not true and we don't have time to fix this.
+        if t2 > 2.0 * t1 {
+            log::warn!("T2 > 2*T1 not supported by Kraus form; skipping.");
+            return;
+        }
+
+        let p_t1 = (-t_gate / t1).exp();
+        let p_t2 = (-t_gate / t2).exp();
+
+        let p_reset = 1.0 - p_t1;
+        let p_z = (p_t1 - p_t2) / 2.0;
+        let p_i = 1.0 - p_z - p_reset;
+
+        // ensure nonnegative, was having problems with density matrix not being trace preserving.
+        let p_reset = p_reset.max(0.0);
+        let p_z = p_z.max(0.0);
+        let p_i = p_i.max(0.0);
+
+        let zero = Complex32::new(0.0, 0.0);
+
+        let k_i = Array2::from_shape_vec(
+            (2, 2),
+            vec![
+                Complex32::new(p_i.sqrt(), 0.0),
+                zero,
+                zero,
+                Complex32::new(p_i.sqrt(), 0.0),
+            ],
+        )
+        .unwrap();
+
+        let k_z = Array2::from_shape_vec(
+            (2, 2),
+            vec![
+                Complex32::new(p_z.sqrt(), 0.0),
+                zero,
+                zero,
+                Complex32::new(-p_z.sqrt(), 0.0),
+            ],
+        )
+        .unwrap();
+
+        // K_reset on both \oprod{0}{0} and {0}{1}
+
+        let k_reset_a = Array2::from_shape_vec(
+            (2, 2),
+            vec![Complex32::new(p_reset.sqrt(), 0.0), zero, zero, zero],
+        )
+        .unwrap();
+        let k_reset_b = Array2::from_shape_vec(
+            (2, 2),
+            vec![zero, Complex32::new(p_reset.sqrt(), 0.0), zero, zero],
+        )
+        .unwrap();
+
+        self.apply_kraus_map(q, &[k_i, k_z, k_reset_a, k_reset_b]);
+    }
+
     pub fn init_with_noise(n: usize, noise: NoiseModel) -> Self {
         let mut density = Self::init(n);
         density.noise = Some(noise);
@@ -138,101 +203,33 @@ impl Density {
         self.data = next_rho;
     }
 
+    // I updated this to match more like section II A of the paper (Georgopoulos et al.)
     pub fn apply_depolarizing_noise(&mut self, q: usize) {
         let p = self.noise.map(|m| m.p_depolarize).unwrap_or(0.0);
         if p == 0.0 {
             return;
         }
 
-        let p_4 = (p / 4.0).sqrt();
-        let i_coeff = (1.0 - 0.75 * p).sqrt();
+        let i_coeff = (1.0 - p).sqrt();
+        let p_3 = (p / 3.0).sqrt();
 
-        // Depolarization kraus operators
+        let zero = Complex32::new(0.0, 0.0);
         let e0 = Array2::from_shape_vec(
             (2, 2),
             vec![
                 Complex32::new(i_coeff, 0.0),
-                Complex32::new(0.0, 0.0),
-                Complex32::new(0.0, 0.0),
+                zero,
+                zero,
                 Complex32::new(i_coeff, 0.0),
             ],
         )
         .unwrap();
 
-        let ex = Gate::X.matrix() * p_4;
-        let ey = Gate::Y.matrix() * p_4;
-        let ez = Gate::Z.matrix() * p_4;
+        let ex = Gate::X.matrix() * p_3;
+        let ey = Gate::Y.matrix() * p_3;
+        let ez = Gate::Z.matrix() * p_3;
 
         self.apply_kraus_map(q, &[e0, ex, ey, ez]);
-    }
-
-    pub fn apply_decoherence(&mut self, q: usize) {
-        let (t1, _t2, t_gate) = match self.noise {
-            Some(m) => (m.t1, m.t2, m.gate_time),
-            None => return,
-        };
-
-        let gamma = 1.0 - (-t_gate / t1).exp();
-
-        // Kraus operators for Amplitude Damping (T1)
-        let e0 = Array2::from_shape_vec(
-            (2, 2),
-            vec![
-                Complex32::new(1.0, 0.0),
-                Complex32::new(0.0, 0.0),
-                Complex32::new(0.0, 0.0),
-                Complex32::new((1.0 - gamma).sqrt(), 0.0),
-            ],
-        )
-        .unwrap();
-
-        let e1 = Array2::from_shape_vec(
-            (2, 2),
-            vec![
-                Complex32::new(0.0, 0.0),
-                Complex32::new(gamma.sqrt(), 0.0),
-                Complex32::new(0.0, 0.0),
-                Complex32::new(0.0, 0.0),
-            ],
-        )
-        .unwrap();
-
-        self.apply_kraus_map(q, &[e0, e1]);
-    }
-
-    pub fn apply_phase_damping(&mut self, q: usize) {
-        let (t1, t2, t_gate) = match self.noise {
-            Some(m) => (m.t1, m.t2, m.gate_time),
-            None => return,
-        };
-
-        let t_ph_inv = (1.0 / t2) - (1.0 / (2.0 * t1));
-        let lambda = 1.0 - (-t_gate * t_ph_inv).exp();
-
-        // Kraus operators for Phase Damping
-        let e0 = Array2::from_shape_vec(
-            (2, 2),
-            vec![
-                Complex32::new(1.0, 0.0),
-                Complex32::new(0.0, 0.0),
-                Complex32::new(0.0, 0.0),
-                Complex32::new((1.0 - lambda).sqrt(), 0.0),
-            ],
-        )
-        .unwrap();
-
-        let e1 = Array2::from_shape_vec(
-            (2, 2),
-            vec![
-                Complex32::new(0.0, 0.0),
-                Complex32::new(0.0, 0.0),
-                Complex32::new(0.0, 0.0),
-                Complex32::new(lambda.sqrt(), 0.0),
-            ],
-        )
-        .unwrap();
-
-        self.apply_kraus_map(q, &[e0, e1]);
     }
 
     pub fn apply_gate_noise_and_decoherence(
@@ -249,8 +246,7 @@ impl Density {
 
         let n_total = self.data.ndim() / 2;
         for i in 0..n_total {
-            self.apply_decoherence(i);
-            self.apply_phase_damping(i);
+            self.apply_relaxation_and_dephasing(i);
         }
     }
 }

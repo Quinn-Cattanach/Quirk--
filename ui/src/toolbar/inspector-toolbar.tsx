@@ -12,7 +12,6 @@ import { useEffect, useMemo, useState } from "react";
 export const InspectorToolbar = () => {
     const {
         circuit,
-        noiseModel,
         setDephasingFactor,
         setEnergyDecay,
         setFlipProbability,
@@ -26,6 +25,8 @@ export const InspectorToolbar = () => {
             circuit.getStartingState(i),
         ),
     );
+
+    const noiseModel = circuit.noiseModel;
 
     useEffect(() => {
         setStartingStates((prev) => {
@@ -77,7 +78,7 @@ export const InspectorToolbar = () => {
                     label: "Add Qbit",
                     onClick: () => {
                         circuit.addQbit();
-                        setNQbit(circuit.numQbit); // Trigger re-render
+                        setNQbit(circuit.numQbit);
                     },
                     icon: <Plus className="size-5" />,
                 },
@@ -108,6 +109,7 @@ export const InspectorToolbar = () => {
                                     value <= 100
                                 ) {
                                     setFlipProbability(value / 100);
+                                    // setNoiseModel(circuit.noiseModel);
                                     return true;
                                 }
 
@@ -117,7 +119,7 @@ export const InspectorToolbar = () => {
                         {
                             type: "input",
                             label: "Time to Relaxation",
-                            unit: "ns",
+                            unit: "μs",
                             initialValue: `${noiseModel.t1}`,
                             onChange: (newValue: string) => {
                                 const value = Number(newValue);
@@ -127,6 +129,7 @@ export const InspectorToolbar = () => {
                                     value <= 100
                                 ) {
                                     setEnergyDecay(value);
+                                    // setNoiseModel(circuit.noiseModel);
                                     return true;
                                 }
 
@@ -136,7 +139,7 @@ export const InspectorToolbar = () => {
                         {
                             type: "input",
                             label: "Time to Dephase",
-                            unit: "ns",
+                            unit: "μs",
                             initialValue: `${noiseModel.t1}`,
                             onChange: (newValue: string) => {
                                 const value = Number(newValue);
@@ -146,6 +149,7 @@ export const InspectorToolbar = () => {
                                     value <= 100
                                 ) {
                                     setDephasingFactor(value);
+                                    // setNoiseModel(circuit.noiseModel);
                                     return true;
                                 }
 
@@ -155,7 +159,7 @@ export const InspectorToolbar = () => {
                         {
                             type: "input",
                             label: "Gate Time",
-                            unit: "ns",
+                            unit: "μs",
                             initialValue: `${noiseModel.gate_time}`,
                             onChange: (newValue: string) => {
                                 const value = Number(newValue);
@@ -165,6 +169,7 @@ export const InspectorToolbar = () => {
                                     value <= 100
                                 ) {
                                     setGateTime(value);
+                                    // setNoiseModel(circuit.noiseModel);
                                     return true;
                                 }
 
@@ -183,6 +188,22 @@ export const InspectorToolbar = () => {
                             element: (
                                 <GateToolbarItem
                                     gate={CircuitComponent.createBlochInspector()}
+                                />
+                            ),
+                        },
+                        {
+                            type: "custom",
+                            element: (
+                                <GateToolbarItem
+                                    gate={CircuitComponent.createDensityInspector()}
+                                />
+                            ),
+                        },
+                        {
+                            type: "custom",
+                            element: (
+                                <GateToolbarItem
+                                    gate={CircuitComponent.createFidelityInspector()}
                                 />
                             ),
                         },

@@ -24,19 +24,30 @@ const STATE_OF_KET: Record<KetType, PrimitiveState> = {
     "-i": "MinusI",
 };
 
+const NON_EVOLVING_TYPES = new Set([
+    "bloch-inspector",
+    "fidelity-inspector",
+    "density-inspector",
+]);
+
 /**
  * Convert the UI circuit into the simulator's Circuit format.
  *
- *   UI layout:        components[row][col]  (row = qubit, col = time step)
- *   Sim layout:       gates[col][row]       (transposed)
+ *   UI layout:    components[row][col]  (row = qubit, col = time step)
+ *   Sim layout:   gates[col][row]       (transposed)
  *
  * Not-controls are decomposed by sandwiching the column with X gates on
- * each not-control wire:  X · (Control + target) · X.
+ * each not-control wire: X · (Control + target) · X.
  *
- * Empty columns are dropped. Returns a `columnMap` so the consumer can
- * map simulator-stage indices back to UI columns: `columnMap[i]` is the
- * UI column index that produced simulator column `i`, or -1 if it's a
- * synthesized X-sandwich column.
+ * A column with exactly two swap targets emits a single Swap(q1, q2) at
+ * the lower-indexed row's slot. A column with one swap is a noop and
+ * gets dropped entirely.
+ *
+ * Inspectors (bloch / fidelity / density) don't affect evolution and are
+ * skipped.
+ *
+ * stages[i+1] corresponds to UI column columnMap[i]. A given UI column
+ * may appear multiple times in columnMap (X-sandwich rows for not-controls).
  */
 export function buildSimulatorCircuit(
     components: (CircuitComponent | null)[][],
@@ -53,33 +64,46 @@ export function buildSimulatorCircuit(
     const CTRL: SimComponent = "Control";
 
     const gates: (SimComponent | null)[][] = [];
-
-    /**
-     * stages[i+1] corresponds to UI column columnMap[i]. A given UI column
-     * may appear multiple times in a row (when its execution requires an
-     * X-sandwich for not-controls).
-     */
     const columnMap: number[] = [];
 
     for (let col = 0; col < numColumns; col += 1) {
+        // First pass: classify column.
         const notControlRows: number[] = [];
-        let columnIsEmpty = true;
+        const swapRows: number[] = [];
+        let hasOtherEvolving = false;
 
         for (let row = 0; row < nQbits; row += 1) {
             const c = components[row][col];
             if (!c) continue;
-            if (c.type === "bloch-inspector") continue; // doesn't affect evolution
-            columnIsEmpty = false;
+            if (NON_EVOLVING_TYPES.has(c.type)) continue;
+            if (c.type === "swap") {
+                swapRows.push(row);
+                continue;
+            }
             if (c.type === "not-control") notControlRows.push(row);
+            hasOtherEvolving = true;
         }
-        if (columnIsEmpty) continue;
+
+        if (swapRows.length > 0 && !hasOtherEvolving) {
+            if (swapRows.length === 2) {
+                const out: (SimComponent | null)[] = Array(nQbits).fill(null);
+                const [a, b] = swapRows;
+                out[a] = { Swap: [a, b] };
+                gates.push(out);
+                columnMap.push(col);
+            }
+            continue;
+        }
+
+        if (!hasOtherEvolving) continue;
 
         const buildMidColumn = (): (SimComponent | null)[] => {
             const out: (SimComponent | null)[] = Array(nQbits).fill(null);
             for (let row = 0; row < nQbits; row += 1) {
                 const c = components[row][col];
                 if (!c) continue;
-                if (c.type === "bloch-inspector") continue;
+                if (NON_EVOLVING_TYPES.has(c.type)) continue;
+                if (c.type === "swap") continue; // shouldn't happen here
                 if (c.type === "control" || c.type === "not-control") {
                     out[row] = CTRL;
                 } else if (c.type === "gate" && c.primitive) {

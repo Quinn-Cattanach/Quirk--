@@ -90,7 +90,7 @@ export const GateToolbarItem = ({ gate }: { gate: CircuitComponent }) => {
                     };
 
                     setDragging(true);
-                    draggingGate.current = gate;
+                    draggingGate.current = gate.clone();
 
                     window.addEventListener("mouseup", hidePortal);
                     window.addEventListener("mousemove", follow);
