@@ -2,6 +2,21 @@
 
 A graphical, web-based _noisy_ quantum circuit simulator inspired by Quirk.
 
+# Quick Setup Guide
+
+First build the simulator. Use the provided `build.sh` because this project uses `ts-rs`. `ts-rs` generates bindings with `cargo test`. 
+```
+cd simulator
+chmod a+x ./build.sh
+./build.sh
+```
+
+You can then run the frontend:
+```
+cd ui
+npm install
+npm run dev
+```
 
 # Simulator
 
