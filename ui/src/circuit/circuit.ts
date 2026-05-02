@@ -215,6 +215,19 @@ export class Circuit {
         for (let col = 0; col < this.numColumns; col++) {
             const idx = stageIndexAtUiColumn(result.columnMap, col);
             const stage = result.stages[idx] ?? null;
+            if (stage) {
+                console.log("col", col, "dirty ρ:", stage.dirty.density_matrix);
+
+                console.log("col", col, "clean ρ:", stage.clean.density_matrix);
+                console.log(
+                    "col",
+                    col,
+                    "clean state:",
+                    stage.clean.state_vector,
+                );
+                console.log("col", col, "dirty ρ:", stage.dirty.density_matrix);
+                console.log("col", col, "fidelity:", stage.fidelity);
+            }
 
             for (let row = 0; row < this.numQbit; row++) {
                 const c = this.#components[row][col];

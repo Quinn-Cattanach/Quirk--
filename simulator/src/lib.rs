@@ -17,7 +17,7 @@ pub mod state;
 pub const SQRT2_INV_COMPLEX: Complex32 = Complex32::new(1f32 / SQRT_2, 0.0);
 pub const ONE_COMPLEX: Complex32 = Complex32::new(1.0, 0.0);
 pub const ZERO_COMPLEX: Complex32 = Complex32::new(0.0, 0.0);
-pub const I_COMPLEX: Complex32 = Complex32::new(0.0, 0.0);
+pub const I_COMPLEX: Complex32 = Complex32::new(0.0, 1.0);
 
 #[wasm_bindgen(start)]
 pub fn main() {
@@ -25,7 +25,6 @@ pub fn main() {
 
     info!("Logger initialized! Rust logs should now appear in console.");
 }
-
 
 #[cfg(test)]
 mod tests {
