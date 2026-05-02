@@ -116,7 +116,7 @@ export const Layout = ({ children }: PropsWithChildren) => {
                         aria-hidden
                         className="absolute inset-0 pointer-events-none z-0"
                         style={{
-                            backgroundImage: 'url("/grid.svg")',
+                            backgroundImage: 'url("/Quirk--/grid.svg")',
                             backgroundRepeat: "repeat",
                             backgroundSize: "37.5px 21.75px",
                             backgroundBlendMode: "multiply",

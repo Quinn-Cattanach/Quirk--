@@ -46,25 +46,6 @@ export const EditorToolbar = () => {
                         }),
                     ],
                 },
-                {
-                    type: "collapse-group",
-                    initiallyCollapsed: false,
-                    label: "Operators",
-                    items: [
-                        ...primitiveGates.map<ToolbarItem>((gate) => {
-                            return {
-                                type: "custom",
-                                element: (
-                                    <GateToolbarItem
-                                        gate={CircuitComponent.fromPrimitive(
-                                            gate,
-                                        )}
-                                    />
-                                ),
-                            };
-                        }),
-                    ],
-                },
             ]}
         ></Toolbar>
     );
