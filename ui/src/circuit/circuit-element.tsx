@@ -121,7 +121,10 @@ export const CircuitElement = () => {
             const rect = canvas.getBoundingClientRect();
             return {
                 x: (clientX - rect.left) * dpr - drawOriginRef.current.x,
-                y: (clientY - rect.top) * dpr - drawOriginRef.current.y,
+                y:
+                    (clientY - rect.top) * dpr -
+                    drawOriginRef.current.y -
+                    circuit.verticalShift,
             };
         };
 

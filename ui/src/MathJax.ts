@@ -84,6 +84,36 @@ export async function getSvgString(
         vbHeight,
     };
 }
+export async function svgToImageBitmapByEx(
+    svg: SVG,
+    pxPerEx: number,
+): Promise<HTMLCanvasElement> {
+    const padded = padSvg(svg.str, 0.25);
+    const dpr = devicePixelRatio;
+
+    const displayWidth = svg.width * pxPerEx;
+    const displayHeight = svg.height * pxPerEx;
+    const pixelWidth = Math.max(1, Math.round(displayWidth * dpr));
+    const pixelHeight = Math.max(1, Math.round(displayHeight * dpr));
+
+    const blob = new Blob([padded], { type: "image/svg+xml" });
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = reject;
+        img.src = url;
+    });
+    URL.revokeObjectURL(url);
+
+    const canvas = document.createElement("canvas");
+    canvas.width = pixelWidth;
+    canvas.height = pixelHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("No 2D context");
+    ctx.drawImage(img, 0, 0, pixelWidth, pixelHeight);
+    return canvas;
+}
 
 export async function svgToImageBitmap(
     svg: SVG,

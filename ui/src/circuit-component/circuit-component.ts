@@ -1,4 +1,9 @@
-import { getSvgString, svgToImageBitmap, type SVG } from "../MathJax";
+import {
+    getSvgString,
+    svgToImageBitmap,
+    svgToImageBitmapByEx,
+    type SVG,
+} from "../MathJax";
 import { err, ok, type Result } from "../result";
 import type { QubitInfo } from "../simulator/bindings/QubitInfo";
 import type { SimulationStage } from "../simulator/bindings/SimulationStage";
@@ -19,6 +24,7 @@ function formatDensityMatrixLatex(matrix: ComplexValue[][]): string {
         .join(" \\\\ ");
     return `\\begin{bmatrix} ${rows} \\end{bmatrix}`;
 }
+
 function drawIconBox(
     ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
     w: number,
@@ -42,6 +48,36 @@ function drawIconBox(
     const maxW = w * 0.4;
     const maxH = h * 0.4;
     const scale = Math.min(maxW / bitmap.width, maxH / bitmap.height);
+    const dw = bitmap.width * scale;
+    const dh = bitmap.height * scale;
+    ctx.drawImage(bitmap, (w - dw) / 2, (h - dh) / 2, dw, dh);
+}
+
+function drawIconOnlySpan(
+    ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+    w: number,
+    h: number,
+    bitmap: HTMLCanvasElement | null,
+) {
+    const dpr = devicePixelRatio;
+    const stroke = 1.5 * dpr;
+    const half = stroke / 2;
+
+    // Same rectangular outline as the real inspector.
+    ctx.fillStyle = "#FFFFFF";
+    ctx.strokeStyle = "#000000";
+    ctx.lineWidth = stroke;
+    ctx.beginPath();
+    ctx.rect(half, half, w - stroke, h - stroke);
+    ctx.fill();
+    ctx.stroke();
+
+    if (!bitmap) return;
+
+    // Center the glyph at its native size.
+    const maxW = Math.min(bitmap.width, w * 0.4);
+    const maxH = Math.min(bitmap.height, h * 0.4);
+    const scale = Math.min(maxW / bitmap.width, maxH / bitmap.height, 1);
     const dw = bitmap.width * scale;
     const dh = bitmap.height * scale;
     ctx.drawImage(bitmap, (w - dw) / 2, (h - dh) / 2, dw, dh);
@@ -271,6 +307,7 @@ function drawDensityInspector(
     h: number,
     stage: SimulationStage | null,
     bitmap: HTMLCanvasElement | null,
+    tooLarge: boolean,
 ) {
     const dpr = devicePixelRatio;
     const stroke = 1.5 * dpr;
@@ -286,10 +323,16 @@ function drawDensityInspector(
 
     if (!stage) return;
 
-    const padX = 10 * dpr;
-    const padY = 10 * dpr;
-    const availW = w - 2 * padX;
-    const availH = h - 2 * padY;
+    if (tooLarge) {
+        ctx.fillStyle = "#666";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.font = `${28 * dpr}px sans-serif`;
+        ctx.fillText(":(", w / 2, h / 2 - 8 * dpr);
+        ctx.font = `${10 * dpr}px sans-serif`;
+        ctx.fillText("matrix too large", w / 2, h / 2 + 16 * dpr);
+        return;
+    }
 
     if (!bitmap) {
         ctx.fillStyle = "#888";
@@ -300,16 +343,16 @@ function drawDensityInspector(
         return;
     }
 
-    // Fit while preserving aspect ratio
-    const scale = Math.min(availW / bitmap.width, availH / bitmap.height);
+    const padX = 10 * dpr;
+    const padY = 10 * dpr;
+    const availW = w - 2 * padX;
+    const availH = h - 2 * padY;
+    const scale = Math.min(availW / bitmap.width, availH / bitmap.height, 1);
     const dw = bitmap.width * scale;
     const dh = bitmap.height * scale;
-
-    // Center in full canvas (no header offset)
-    const dx = (w - dw) / 2;
-    const dy = (h - dh) / 2;
-
-    ctx.drawImage(bitmap, dx, dy, dw, dh);
+    ctx.drawImage(bitmap, (w - dw) / 2, (h - dh) / 2);
+    void dw;
+    void dh;
 }
 
 export class CircuitComponent {
@@ -381,19 +424,22 @@ export class CircuitComponent {
             return;
         }
         const matrix = this.#stage.dirty.density_matrix;
+        const n = Math.round(Math.log2(matrix.length));
+        if (n > CircuitComponent.densityMaxQubits) {
+            this.#densityMatrixBitmap = null;
+            this.#densityMatrixTex = null;
+            return;
+        }
         const tex = formatDensityMatrixLatex(matrix);
 
-        if (tex === this.#densityMatrixTex) return; // unchanged
+        if (tex === this.#densityMatrixTex) return;
 
         this.#densityMatrixTex = tex;
 
         (async () => {
             try {
                 const svg = await getSvgString(tex, false);
-                // sizeCSS controls how tall MathJax rasterizes — bump for
-                // readability. svgToImageBitmap multiplies by dpr internally.
-                const bm = await svgToImageBitmap(svg, 200);
-                // Discard if a newer matrix arrived while we were rendering.
+                const bm = await svgToImageBitmapByEx(svg, 8.5);
                 if (this.#densityMatrixTex === tex) {
                     this.#densityMatrixBitmap = bm;
                     this.#needsDisplay?.();
@@ -468,17 +514,41 @@ export class CircuitComponent {
     }
 
     private static fidelityColumnWidth = 100;
-    private static densityColumnWidth = 220;
+    private static densityCellWidth = 60;
+    private static densityMaxQubits = 4;
 
-    /** Width this component wants its column to be when spanning. */
+    #qubitsFromStage(): number {
+        if (!this.#stage) return 0;
+        const dim = this.#stage.dirty.density_matrix.length;
+        return Math.round(Math.log2(dim));
+    }
+
     get preferredColumnWidth(): number | null {
         if (this.type === "fidelity-inspector") {
             return CircuitComponent.fidelityColumnWidth * devicePixelRatio;
         }
         if (this.type === "density-inspector") {
-            return CircuitComponent.densityColumnWidth * devicePixelRatio;
+            const n = this.#qubitsFromStage();
+            if (n === 0 || n > CircuitComponent.densityMaxQubits) {
+                return 100 * devicePixelRatio;
+            }
+            if (this.#densityMatrixBitmap) {
+                const padX = 20 * devicePixelRatio;
+                return this.#densityMatrixBitmap.width + padX;
+            }
+            const dim = 1 << n;
+            return dim * CircuitComponent.densityCellWidth * devicePixelRatio;
         }
         return null;
+    }
+
+    get preferredColumnHeight(): number | null {
+        if (this.type !== "density-inspector") return null;
+        const n = this.#qubitsFromStage();
+        if (n === 0 || n > CircuitComponent.densityMaxQubits) return null;
+        if (!this.#densityMatrixBitmap) return null;
+        const padY = 20 * devicePixelRatio;
+        return this.#densityMatrixBitmap.height + padY;
     }
 
     private static swapSizeUnscaled = 20;
@@ -645,17 +715,29 @@ export class CircuitComponent {
         ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
         w: number,
         h: number,
+        iconOnly: boolean = false,
     ) {
         if (this.type === "fidelity-inspector") {
-            drawFidelityInspector(ctx, w, h, this.#stage);
+            if (iconOnly) {
+                drawIconOnlySpan(ctx, w, h, this.#bitmap);
+            } else {
+                drawFidelityInspector(ctx, w, h, this.#stage);
+            }
         } else if (this.type === "density-inspector") {
-            drawDensityInspector(
-                ctx,
-                w,
-                h,
-                this.#stage,
-                this.#densityMatrixBitmap,
-            );
+            if (iconOnly) {
+                drawIconOnlySpan(ctx, w, h, this.#bitmap);
+            } else {
+                const tooLarge =
+                    this.#qubitsFromStage() > CircuitComponent.densityMaxQubits;
+                drawDensityInspector(
+                    ctx,
+                    w,
+                    h,
+                    this.#stage,
+                    this.#densityMatrixBitmap,
+                    tooLarge,
+                );
+            }
         }
     }
 

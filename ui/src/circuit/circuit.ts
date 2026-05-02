@@ -409,6 +409,23 @@ export class Circuit {
         return Math.max(max, this.s.minRowHeight);
     }
 
+    #extraHeightForColumn(col: number): number {
+        const spanning = this.#columnSpanningAt(col);
+        if (!spanning) return 0;
+        const pref = spanning.preferredColumnHeight;
+        if (pref == null) return 0;
+        const rowsHeight = this.#rowStackHeight();
+        return Math.max(0, pref - rowsHeight);
+    }
+
+    #rowStackHeight(): number {
+        if (this.numQbit === 0) return 0;
+        const lastRow = this.numQbit - 1;
+        return (
+            this.rowTopY(lastRow) + this.heightOfRow(lastRow) - this.rowTopY(0)
+        );
+    }
+
     removeAt(row: number, col: number) {
         if (row < 0 || row >= this.numQbit) return;
         if (col < 0 || col >= this.numColumns) return;
@@ -448,8 +465,6 @@ export class Circuit {
         return this.#components[row][col];
     }
 
-    // ---------- geometry ----------
-
     get width(): number {
         let w = 0;
         for (let i = 0; i < this.numColumns; i += 1) w += this.widthOfColumn(i);
@@ -461,10 +476,12 @@ export class Circuit {
     }
 
     get height(): number {
-        let h = 0;
-        for (let i = 0; i < this.numQbit; i += 1) h += this.heightOfRow(i);
-        if (this.numQbit > 1) h += (this.numQbit - 1) * this.s.rowPadding;
-        return h;
+        let h = this.#rowStackHeight();
+        let extra = 0;
+        for (let j = 0; j < this.numColumns; j++) {
+            extra = Math.max(extra, this.#extraHeightForColumn(j));
+        }
+        return h + extra;
     }
 
     private rowTopY(index: number): number {
@@ -612,6 +629,31 @@ export class Circuit {
         }
     }
 
+    canDropAt(
+        target: { row: number; col: number; insert: boolean },
+        component: CircuitComponent,
+    ): boolean {
+        if (target.row < 0 || target.row >= this.numQbit) return false;
+        if (target.col < 0) return false;
+        if (target.insert) return true;
+
+        if (target.col >= this.numColumns) return true;
+
+        if (component.spans === "column") {
+            return this.isColumnEmpty(target.col);
+        }
+        if (component.type === "swap") {
+            if (this.#columnIsBlocked(target.col)) return false;
+            if (this.#columnHasNonSwap(target.col)) return false;
+            if (this.#countSwapsInColumn(target.col) >= 2) return false;
+            return this.#components[target.row][target.col] == null;
+        }
+
+        if (this.#columnIsBlocked(target.col)) return false;
+        if (this.#isSwapColumn(target.col)) return false;
+        return this.#components[target.row][target.col] == null;
+    }
+
     /**
      * Geometry of where a ghost should render for a given drop target,
      * in circuit-local coordinates. Returns the rect to draw the ghost in.
@@ -756,6 +798,14 @@ export class Circuit {
         );
     }
 
+    get verticalShift(): number {
+        let maxExtra = 0;
+        for (let j = 0; j < this.numColumns; j++) {
+            maxExtra = Math.max(maxExtra, this.#extraHeightForColumn(j));
+        }
+        return maxExtra / 2;
+    }
+
     render(
         ctx: CanvasRenderingContext2D,
         ghost?: {
@@ -767,6 +817,15 @@ export class Circuit {
         const w = this.width;
         const h = this.height;
         ctx.clearRect(0, 0, w, h);
+
+        let maxExtra = 0;
+        for (let j = 0; j < this.numColumns; j++) {
+            maxExtra = Math.max(maxExtra, this.#extraHeightForColumn(j));
+        }
+        const verticalShift = maxExtra / 2;
+        if (verticalShift > 0) {
+            ctx.translate(0, verticalShift);
+        }
 
         // wires (start AFTER the ket area)
         const wireStart = this.s.ketAreaWidth;
@@ -898,11 +957,10 @@ export class Circuit {
             if (spanning) {
                 const colW = this.widthOfColumn(j);
                 const colX = this.columnLeftX(j);
-                const topY = this.rowTopY(0);
-                const lastRow = this.numQbit - 1;
-                const bottomY =
-                    this.rowTopY(lastRow) + this.heightOfRow(lastRow);
-                const colH = bottomY - topY;
+                const baseColH = this.#rowStackHeight();
+                const extra = this.#extraHeightForColumn(j);
+                const colH = baseColH + extra;
+                const topY = this.rowTopY(0) - extra / 2;
                 ctx.save();
                 ctx.translate(colX, topY);
                 spanning.drawSpanning(ctx, colW, colH);
@@ -954,42 +1012,34 @@ export class Circuit {
             }
         }
 
-        // phantom preview
         if (ghost) {
-            const overBlocked =
-                !ghost.target.insert &&
-                ghost.target.col >= 0 &&
-                ghost.target.col < this.numColumns &&
-                this.#columnIsBlocked(ghost.target.col);
-            if (overBlocked) {
+            if (!this.canDropAt(ghost.target, ghost.component)) {
                 ctx.restore();
                 return;
             }
 
             // Spanning component being dragged → preview as full-column rect.
             if (ghost.component.spans === "column") {
-                const col = ghost.target.col;
-                // For an `insert` target, it'll be drawn into a fresh column —
-                // use ghostRect to find x. For a non-insert target, the column
-                // must be empty (drop will reject otherwise) — show preview anyway.
                 const rect = this.ghostRect(ghost.target);
                 if (rect.width > 0) {
                     const slotW = Math.max(rect.width, ghost.component.width);
-                    const topY = this.rowTopY(0);
-                    const lastRow = this.numQbit - 1;
-                    const bottomY =
-                        this.rowTopY(lastRow) + this.heightOfRow(lastRow);
-                    const colH = bottomY - topY;
+                    const baseColH = this.#rowStackHeight();
+                    const prefH = ghost.component.preferredColumnHeight;
+                    const extra =
+                        prefH != null ? Math.max(0, prefH - baseColH) : 0;
+                    const colH = baseColH + extra;
+                    const topY = this.rowTopY(0) - extra / 2;
                     ctx.save();
                     ctx.globalAlpha = 0.5;
                     ctx.translate(rect.x, topY);
-                    ghost.component.drawSpanning(ctx, slotW, colH);
+                    ghost.component.drawSpanning(ctx, slotW, colH, true);
                     ctx.restore();
                 }
                 ctx.restore();
                 return;
             }
 
+            // Single-cell ghost.
             const rect = this.ghostRect(ghost.target);
             if (rect.width > 0 && rect.height > 0) {
                 ctx.save();
@@ -1036,6 +1086,7 @@ export class Circuit {
                 ctx.restore();
             }
         }
+
         ctx.restore();
     }
 
