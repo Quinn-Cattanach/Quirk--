@@ -1,0 +1,4 @@
+/simulator/target**/
+/ui/node_modules**/
+/.vscode**/
+layout.md
