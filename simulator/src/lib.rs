@@ -1,11 +1,7 @@
 use std::f32::consts::SQRT_2;
 
-use crate::circuit::Circuit;
-
-use log::Level;
-use log::{error, info};
+use log::info;
 use num_complex::Complex32;
-use serde::Deserialize;
 use wasm_bindgen::prelude::*;
 pub mod circuit;
 pub mod gates;

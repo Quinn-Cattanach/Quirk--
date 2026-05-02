@@ -3,7 +3,6 @@ use num_complex::Complex32;
 use serde::Serialize;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
-use wasm_bindgen::prelude::*;
 
 use crate::circuit::{Circuit, CircuitComponent};
 use crate::noise::NoiseModel;
