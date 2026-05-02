@@ -4,23 +4,6 @@ import { SHADOW_STYLE } from "../styles";
 import { layoutContext } from "../layout";
 import { createPortal } from "react-dom";
 
-function cloneCanvas(source: HTMLCanvasElement) {
-    const clone = document.createElement("canvas");
-
-    clone.width = source.width;
-    clone.height = source.height;
-
-    const ctx = clone.getContext("2d");
-    if (ctx) {
-        ctx.drawImage(source, 0, 0);
-    }
-
-    clone.style.width = source.style.width;
-    clone.style.height = source.style.height;
-
-    return clone;
-}
-
 export const GateToolbarItem = ({ gate }: { gate: CircuitComponent }) => {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
 

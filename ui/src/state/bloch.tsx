@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 // Adjust this import to wherever you keep the mathjax helpers.
-import { getSvgString, svgToImageBitmap } from "../MathJax";
+import { getSvgString, svgToImageBitmap } from "../mathjax-helpers";
 
 type Direction3D = { phi: number; theta: number };
 

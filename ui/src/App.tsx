@@ -1,9 +1,7 @@
-import { useEffect, useRef, useState } from "react";
-import { SingleQbitState } from "./state/single-qbit";
+import { useEffect } from "react";
 import { Layout } from "./layout";
 import { CircuitElement } from "./circuit/circuit-element";
-import { BlochSphereDemo } from "./state/bloch";
-import { main, simulate_circuit } from "./simulator/pkg/quirkmm_simulator";
+import { simulate_circuit } from "./simulator/pkg/quirkmm_simulator";
 import type { Circuit } from "./simulator/bindings/Circuit";
 import type { PrimitiveState } from "./simulator/bindings/PrimitiveState";
 import type { SimulationStage } from "./simulator/bindings/SimulationStage";

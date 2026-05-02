@@ -1,8 +1,5 @@
 import { Plus } from "lucide-react";
-import {
-    CircuitComponent,
-    primitiveGates,
-} from "../circuit-component/circuit-component";
+import { CircuitComponent } from "../circuit-component/circuit-component";
 import { GateToolbarItem } from "../circuit-component/toolbar-item";
 import { Toolbar, type ToolbarItem } from "./toolbar-layout";
 import { useCircuit } from "../circuit";

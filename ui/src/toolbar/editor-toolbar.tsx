@@ -1,4 +1,3 @@
-import { Plus } from "lucide-react";
 import {
     CircuitComponent,
     primitiveGates,

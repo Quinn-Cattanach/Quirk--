@@ -11,7 +11,7 @@ export type SimulationResult = {
 };
 
 // Adjust this import to wherever you keep the mathjax helpers.
-import { getSvgString, svgToImageBitmap } from "../mathjax";
+import { getSvgString, svgToImageBitmap } from "../mathjax-helpers";
 
 export type KetType = "0" | "1" | "+" | "-" | "+i" | "-i";
 
@@ -476,7 +476,7 @@ export class Circuit {
     }
 
     get height(): number {
-        let h = this.#rowStackHeight();
+        const h = this.#rowStackHeight();
         let extra = 0;
         for (let j = 0; j < this.numColumns; j++) {
             extra = Math.max(extra, this.#extraHeightForColumn(j));
@@ -742,35 +742,6 @@ export class Circuit {
         }
         this.#phantom = { col, width };
         this.#needsDisplay?.();
-    }
-
-    private renderColumnLeftX(index: number): number {
-        let x = this.s.ketAreaWidth + this.s.wireExtension;
-        for (let j = 0; j < index; j += 1) {
-            if (this.#phantom && this.#phantom.col === j) {
-                x += this.#phantom.width + this.s.columnPadding;
-            }
-            x += this.widthOfColumn(j) + this.s.columnPadding;
-        }
-        if (this.#phantom && this.#phantom.col === index) {
-            x += this.#phantom.width + this.s.columnPadding;
-        }
-        return x;
-    }
-
-    private renderPhantomLeftX(): number | null {
-        if (!this.#phantom) return null;
-        let x = this.s.ketAreaWidth + this.s.wireExtension;
-        for (let j = 0; j < this.#phantom.col; j += 1) {
-            x += this.widthOfColumn(j) + this.s.columnPadding;
-        }
-        return x;
-    }
-
-    private get renderWidth(): number {
-        let w = this.width;
-        if (this.#phantom) w += this.#phantom.width + this.s.columnPadding;
-        return w;
     }
 
     #countSwapsInColumn(col: number): number {

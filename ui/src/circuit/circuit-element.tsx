@@ -1,11 +1,7 @@
 import { useContext, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { layoutContext } from "../layout";
-import { Circuit } from "./circuit";
-import {
-    CircuitComponent,
-    type PrimitiveGate,
-} from "../circuit-component/circuit-component";
+import { CircuitComponent } from "../circuit-component/circuit-component";
 import { SHADOW_STYLE } from "../styles";
 import { useCircuit } from "../circuit";
 
@@ -147,11 +143,6 @@ export const CircuitElement = () => {
                 }
             }
             return null;
-        };
-
-        const hit = (e: MouseEvent) => {
-            const { x, y } = toCircuitCoords(e.clientX, e.clientY);
-            return circuit.hitTest(x, y);
         };
 
         const startInternalDrag = (e: MouseEvent) => {

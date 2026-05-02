@@ -63,8 +63,8 @@ export async function getSvgString(
     const doc = parser.parseFromString(svgString, "image/svg+xml");
     const svgEl = doc.documentElement;
 
-    let width = parseFloat(svgEl.getAttribute("width") ?? "0");
-    let height = parseFloat(svgEl.getAttribute("height") ?? "0");
+    const width = parseFloat(svgEl.getAttribute("width") ?? "0");
+    const height = parseFloat(svgEl.getAttribute("height") ?? "0");
 
     let vbWidth = width;
     let vbHeight = height;

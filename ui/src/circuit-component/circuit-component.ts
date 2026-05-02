@@ -3,14 +3,21 @@ import {
     svgToImageBitmap,
     svgToImageBitmapByEx,
     type SVG,
-} from "../MathJax";
-import { err, ok, type Result } from "../result";
+} from "../mathjax-helpers";
+import { err, type Result } from "../result";
 import type { QubitInfo } from "../simulator/bindings/QubitInfo";
 import type { SimulationStage } from "../simulator/bindings/SimulationStage";
 import type { ComplexValue } from "../simulator/bindings/ComplexValue";
 
 export type PrimitiveGate = "hadamard" | "pauli-x" | "pauli-y" | "pauli-z";
-
+export type ComponentType =
+    | "gate"
+    | "control"
+    | "not-control"
+    | "bloch-inspector"
+    | "fidelity-inspector"
+    | "density-inspector"
+    | "swap";
 export const primitiveGates: PrimitiveGate[] = [
     "hadamard",
     "pauli-x",
@@ -133,9 +140,9 @@ function drawGreatCircle(
     );
     const bitan = cross3(n, tangent);
 
-    const project = (p: number[]) => [
+    const project = (p: number[]): [number, number] => [
         dot3(p, right),
-        -dot3(p, up), // match your inverted Y
+        -dot3(p, up),
     ];
 
     const N = 64;
@@ -379,14 +386,7 @@ export class CircuitComponent {
         this.#needsDisplay = newCallback;
     }
 
-    type:
-        | "gate"
-        | "control"
-        | "not-control"
-        | "bloch-inspector"
-        | "fidelity-inspector"
-        | "density-inspector"
-        | "swap";
+    type: ComponentType;
     label: string;
 
     #qubitInfo: QubitInfo | null = null;
@@ -594,15 +594,7 @@ export class CircuitComponent {
                 CircuitComponent.blochInspectorSizeUnscaled * devicePixelRatio
             );
         }
-        // For column-spanning inspectors, this is just the placeholder cell
-        // height (matches a normal gate row). The Circuit's renderer overrides
-        // it via drawSpanning(...).
-        if (
-            this.type === "fidelity-inspector" ||
-            this.type === "density-inspector"
-        ) {
-            return 48 * devicePixelRatio;
-        }
+
         return (
             (this.#bitmap?.height ?? 20.0) +
             2 * CircuitComponent.paddingUnscaled * devicePixelRatio
@@ -748,7 +740,7 @@ export class CircuitComponent {
     }: {
         label: string;
         latexString: string;
-        type?: "gate" | "control" | "not-control" | "bloch-inspector";
+        type?: ComponentType;
     }) {
         this.type = type;
         this.label = label;
