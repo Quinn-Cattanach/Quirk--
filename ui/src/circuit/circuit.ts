@@ -151,9 +151,9 @@ export class Circuit {
     }
 
     #noiseModel: NoiseModel = {
-        t1: 50.0,
-        t2: 70.0,
-        p_depolarize: 0.001,
+        t1: 56.15,
+        t2: 56.01,
+        p_depolarize: 11.68e-4,
         gate_time: 0.1,
     };
     #onSimulation: ((result: SimulationResult) => void) | null = null;

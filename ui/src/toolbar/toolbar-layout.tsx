@@ -49,7 +49,7 @@ const Item = ({ item, path }: { item: ToolbarItem; path?: string }) => {
                       ${!valid ? "outline-4 outline-red-400" : ""}`}
                     >
                         <input
-                            className={`p-2 w-12 h-8 text-center bg-transparent outline-none
+                            className={`p-2 w-16 h-8 text-center bg-transparent outline-none
                         ${item.unit ? "rounded-l-sm" : "rounded-sm"}`}
                             onChange={(e) => {
                                 setValid(item.onChange(e.target.value));
@@ -57,7 +57,7 @@ const Item = ({ item, path }: { item: ToolbarItem; path?: string }) => {
                             defaultValue={item.initialValue}
                         />
                         {item.unit && (
-                            <div className="rounded-r-sm border-l border-neutral-300 w-12 h-8 flex items-center">
+                            <div className="rounded-r-sm border-l border-neutral-300 w-8 h-8 flex items-center">
                                 <p className="m-auto">{item.unit}</p>
                             </div>
                         )}
